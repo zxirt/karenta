@@ -3766,11 +3766,13 @@ function noBooking(){
 const BKG_SORT = { col:'mulai', dir:'desc' };
 
 function renderBooking(){
+  // Jika elemen booking belum ada di DOM (section tidak aktif), skip
+  const mobSel = document.getElementById('fil-mobil-bkg');
+  const pelSel = document.getElementById('fil-pel-bkg');
+  if(!mobSel||!pelSel) return;
   // populate dropdown filters
   const mobs = DB.get('mobil');
   const pels = DB.get('pelanggan');
-  const mobSel = document.getElementById('fil-mobil-bkg');
-  const pelSel = document.getElementById('fil-pel-bkg');
   const curMob = mobSel.value, curPel = pelSel.value;
   mobSel.innerHTML = '<option value="">Semua Unit</option>' +
     mobs.map(m=>`<option value="${m.id}" ${m.id===curMob?'selected':''}>${esc(m.nama)} (${esc(m.plat)})</option>`).join('');
@@ -4120,6 +4122,8 @@ function openLunasModal(id){
   // Quick tandai lunas dari tabel booking
   const bkgs = DB.get('booking');
   const b = bkgs.find(x=>x.id===id); if(!b)return;
+  const sudahLunas = b.statusBayar==='lunas';
+  const totalKosong = !b.total || b.total===0;
   const sisa = b.total - (b.dp||0);
 
   // Build quick modal
@@ -4138,15 +4142,20 @@ function openLunasModal(id){
         <button onclick="document.getElementById('qs-overlay').remove()" style="background:none;border:none;color:var(--text3);font-size:24px;cursor:pointer;padding:0 6px;line-height:1">×</button>
       </div>
       <div style="padding:16px 20px 20px">
-        <div style="background:var(--card2);border-radius:var(--rs);padding:12px;margin-bottom:14px;font-size:13px">
-          <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:var(--text3)">Total</span><strong>${fmt(b.total)}</strong></div>
-          <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:var(--text3)">DP</span><span>${fmt(b.dp||0)}</span></div>
-          <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:8px;margin-top:4px">
-            <span style="font-weight:600">Sisa</span>
-            <strong style="color:${sisa>0?'var(--accent)':'var(--green)'}">${sisa>0?fmt(sisa):'✅ Lunas'}</strong>
-          </div>
-        </div>
-        ${sisa>0?`
+        ${sudahLunas
+          ? `<p style="font-size:13px;color:var(--green);text-align:center;padding:10px 0">Booking ini sudah lunas ✅</p>`
+          : totalKosong
+            ? `<div style="background:var(--card2);border-radius:var(--rs);padding:12px;margin-bottom:14px;font-size:13px">
+               <div style="color:var(--accent);font-size:12px;margin-bottom:8px">⚠️ Total belum dihitung. Masukkan nominal pembayaran:</div>
+               <input class="fi" id="quick-pay-nominal" type="number" placeholder="Nominal pembayaran" min="0" style="margin-top:4px"></div>`
+            : `<div style="background:var(--card2);border-radius:var(--rs);padding:12px;margin-bottom:14px;font-size:13px">
+               <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:var(--text3)">Total</span><strong>${fmt(b.total)}</strong></div>
+               <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:var(--text3)">DP</span><span>${fmt(b.dp||0)}</span></div>
+               <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:8px;margin-top:4px">
+                 <span style="font-weight:600">Sisa</span>
+                 <strong style="color:var(--accent)">${fmt(sisa)}</strong>
+               </div></div>`}
+        ${sudahLunas ? `` : `
         <div style="margin-bottom:12px">
           <label class="fl">Metode Pembayaran</label>
           <div class="pay-method-row" id="quick-pay-row">
@@ -4161,7 +4170,7 @@ function openLunasModal(id){
           <input class="fi" id="quick-pay-ref" placeholder="BCA 1234567890 / TRF-003">
         </div>
         <button class="btn btn-p" style="width:100%;justify-content:center" onclick="doQuickLunas('${id}')">✅ Tandai Lunas</button>
-        `:`<p style="font-size:13px;color:var(--green);text-align:center;padding:10px 0">Booking ini sudah lunas ✅</p>`}
+        `}
       </div>
     </div>`;
 
@@ -4181,13 +4190,26 @@ function doQuickLunas(id){
   const b = bkgs.find(x=>x.id===id); if(!b)return;
   const method = document.querySelector('#quick-pay-row .pay-btn.active')?.dataset.method||'cash';
   const ref    = document.getElementById('quick-pay-ref')?.value.trim()||'';
+  // Jika total kosong (belum ada tgl selesai), ambil dari input nominal manual
+  const nominalInput = parseFloat(document.getElementById('quick-pay-nominal')?.value)||0;
+  if(nominalInput > 0 && (!b.total || b.total===0)) b.total = nominalInput;
   b.statusBayar      = 'lunas';
   b.metodeBayarLunas = method;
   b.lunasRef         = ref;
+  // Jika masih aktif, tandai selesai sekaligus agar masuk hitungan pendapatan
+  if(b.status === 'aktif'){
+    b.status = 'selesai';
+    if(!b.selesai) b.selesai = today();
+    if(b.mulai && b.selesai && b.selesai >= b.mulai){
+      const autoTotal = b.durasi*(b.hph||0) + b.durasi*(b.biayaSopir||0) + (b.biayaBBM||0) + (b.dendaKm||0);
+      // Hitung otomatis hanya jika lebih besar dari nominal manual
+      if(autoTotal > 0) b.total = autoTotal;
+    }
+  }
   DB.set('booking', bkgs);
   document.getElementById('qs-overlay')?.remove();
   _refreshAfterChange();
-  toast(`Booking ${b.no} ditandai Lunas via ${PAY_LABELS[method]}!`);
+  toast(`Booking ${b.no} ditandai Lunas & Selesai!`);
 }
 
 function calcKmBkg(){
@@ -4261,10 +4283,11 @@ function delBkg(id){
 
 // ── helper: refresh semua panel setelah data booking berubah ──
 function _refreshAfterChange(){
-  renderBooking();
-  renderDash();
+  // Gunakan try-catch agar error di satu render tidak memblokir render lainnya
+  try{ renderBooking(); }catch(e){ console.warn('renderBooking skip:',e); }
+  try{ renderDash(); }catch(e){ console.warn('renderDash skip:',e); }
   const _s=document.querySelector('.sec.active')?.id?.replace('sec-','');
-  if(_s==='laporan') renderLap();
+  if(_s==='laporan'){ try{ renderLap(); }catch(e){ console.warn('renderLap skip:',e); } }
 }
 
 function openStatus(id){
@@ -4292,10 +4315,13 @@ function doUpdateStatus(){
   if(ns==='selesai'){
     const tglKembali=document.getElementById('st-tgl-selesai').value||today();
     b.selesai=tglKembali;
-    if(b.mulai&&b.selesai&&b.selesai>b.mulai){
-      b.durasi=diff(b.mulai,b.selesai);
+    // Hitung ulang durasi & total (>=: sewa 1 hari selesai=mulai tetap valid)
+    if(b.mulai&&b.selesai&&b.selesai>=b.mulai){
+      b.durasi=diff(b.mulai,b.selesai)||1;
       b.total=b.durasi*(b.hph||0)+b.durasi*(b.biayaSopir||0)+(b.biayaBBM||0)+(b.dendaKm||0);
     }
+    // Sinkronisasi status bayar: jika belum ditandai, set lunas otomatis
+    if(!b.statusBayar||b.statusBayar==='belum') b.statusBayar='lunas';
   }
   DB.set('booking',bkgs);
   closeM('md-status');
