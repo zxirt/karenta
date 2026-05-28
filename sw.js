@@ -193,10 +193,15 @@ async function enforceCacheSize(cache, maxBytes) {
 
 // ── MESSAGE HANDLER (dari app: paksa update) ──
 self.addEventListener('message', event => {
+  // PATCHED: jangan return true — cegah "message channel closed" warning
   if (event.data?.type === 'SKIP_WAITING') {
     self.skipWaiting();
+    return;
   }
   if (event.data?.type === 'CLEAR_CACHE') {
-    caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k))));
+    event.waitUntil(
+      caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k))))
+    );
+    return;
   }
 });
