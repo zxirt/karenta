@@ -2,7 +2,8 @@
 <html lang="id">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://www.gstatic.com/firebasejs/; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://*.firebasedatabase.app https://*.googleapis.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com; img-src 'self' data: blob:; worker-src 'self'; manifest-src 'self' blob:;">
 <title>Karenta Auto Serasi</title>
 <meta name="theme-color" content="#f0a500">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -211,6 +212,53 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
 .period-row{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap}
 .prbtn{padding:6px 16px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--border2);background:var(--card2);color:var(--text2);transition:all .15s;font-family:'DM Sans',sans-serif}
 .prbtn.active{background:var(--accent);color:#000;border-color:var(--accent)}
+
+
+/* ── DATE PICKER POPUP ── */
+.dp-overlay{position:fixed;inset:0;z-index:300;display:none}
+.dp-overlay.open{display:block}
+.dp-popup{
+  position:absolute;background:var(--surface);border:1px solid var(--border2);
+  border-radius:var(--r);box-shadow:0 20px 60px rgba(0,0,0,.6);
+  z-index:301;overflow:hidden;min-width:300px;
+  animation:sUp .18s cubic-bezier(.34,1.56,.64,1)
+}
+.dp-hdr{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:12px 16px;border-bottom:1px solid var(--border);
+  background:var(--card)
+}
+.dp-my{font-family:'Syne',sans-serif;font-size:14px;font-weight:700}
+.dp-nav{background:var(--card2);border:1px solid var(--border2);color:var(--text);
+  cursor:pointer;width:28px;height:28px;border-radius:var(--rs);
+  display:flex;align-items:center;justify-content:center;transition:background .1s;font-size:13px}
+.dp-nav:hover{background:var(--border2)}
+.dp-grid{display:grid;grid-template-columns:repeat(7,1fr);padding:8px}
+.dp-dh{padding:5px 0;font-size:10px;font-weight:600;color:var(--text3);
+  text-transform:uppercase;text-align:center;letter-spacing:.4px}
+.dp-day{
+  padding:6px 2px;text-align:center;font-size:12.5px;cursor:pointer;
+  border-radius:6px;transition:background .1s;color:var(--text2);
+  user-select:none;position:relative;
+}
+.dp-day:hover:not(.dp-om):not(.dp-disabled){background:var(--card2);color:var(--text)}
+.dp-day.dp-om{opacity:.3;cursor:default;pointer-events:none}
+.dp-day.dp-disabled{opacity:.3;cursor:not-allowed;pointer-events:none}
+.dp-day.dp-today{color:var(--accent);font-weight:700}
+.dp-day.dp-sel-start,.dp-day.dp-sel-end{
+  background:var(--accent)!important;color:#000!important;font-weight:700;border-radius:6px
+}
+.dp-day.dp-in-range{background:var(--accent-dim);color:var(--text);border-radius:0}
+.dp-day.dp-sel-start.dp-in-range{border-radius:6px 0 0 6px}
+.dp-day.dp-sel-end.dp-in-range{border-radius:0 6px 6px 0}
+.dp-day.dp-sel-start.dp-sel-end{border-radius:6px}
+.dp-footer{padding:10px 14px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;color:var(--text3)}
+@media(max-width:480px){
+  .dp-popup{min-width:unset;width:calc(100vw - 16px);left:8px!important;right:8px!important}
+  .dp-day{font-size:11.5px;padding:5px 1px}
+}
+.dp-range-lbl{font-size:11px;color:var(--text3);flex:1}
+.dp-range-lbl strong{color:var(--accent);font-family:'Syne',sans-serif}
 
 /* ── TOAST ── */
 .toast-box{position:fixed;bottom:24px;right:24px;z-index:1000;display:flex;flex-direction:column;gap:8px}
@@ -1659,9 +1707,24 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
           <select class="fs" id="bkg-mob"><option value="">-- Pilih Mobil --</option></select>
         </div>
       </div>
+      <!-- hidden date inputs (still used by JS logic) -->
+      <input type="hidden" id="bkg-mulai">
+      <input type="hidden" id="bkg-selesai">
       <div class="frow">
-        <div class="fg"><label class="fl">Tanggal Mulai *</label><input class="fi" type="date" id="bkg-mulai"></div>
-        <div class="fg"><label class="fl">Tanggal Selesai <span style="color:var(--text3);font-weight:400">(opsional)</span></label><input class="fi" type="date" id="bkg-selesai"></div>
+        <div class="fg">
+          <label class="fl">Tanggal Mulai *</label>
+          <button type="button" class="fi" id="bkg-mulai-btn" onclick="dpOpen('mulai')"
+            style="text-align:left;cursor:pointer;display:flex;align-items:center;gap:8px;color:var(--text3)">
+            <span style="font-size:15px">📅</span><span id="bkg-mulai-lbl">Pilih tanggal mulai</span>
+          </button>
+        </div>
+        <div class="fg">
+          <label class="fl">Tanggal Selesai <span style="color:var(--text3);font-weight:400">(opsional)</span></label>
+          <button type="button" class="fi" id="bkg-selesai-btn" onclick="dpOpen('selesai')"
+            style="text-align:left;cursor:pointer;display:flex;align-items:center;gap:8px;color:var(--text3)">
+            <span style="font-size:15px">🏁</span><span id="bkg-selesai-lbl">Pilih tanggal selesai</span>
+          </button>
+        </div>
       </div>
       <div class="frow">
         <div class="fg"><label class="fl">⏰ Jam Dipinjam</label><input class="fi" type="time" id="bkg-jam-mulai" value="08:00"></div>
@@ -1878,8 +1941,10 @@ const mfst = {
   theme_color     : '#f0a500',
   categories      : ['business','productivity'],
   icons           : [
-    {src:icon192, sizes:'192x192', type:'image/png', purpose:'any maskable'},
-    {src:icon512, sizes:'512x512', type:'image/png', purpose:'any maskable'},
+    {src:icon192, sizes:'192x192', type:'image/png', purpose:'any'},
+    {src:icon192, sizes:'192x192', type:'image/png', purpose:'maskable'},
+    {src:icon512, sizes:'512x512', type:'image/png', purpose:'any'},
+    {src:icon512, sizes:'512x512', type:'image/png', purpose:'maskable'},
   ]
 };
 const mblob = new Blob([JSON.stringify(mfst)],{type:'application/json'});
@@ -1895,50 +1960,44 @@ document.getElementById('manifest-link').href = URL.createObjectURL(mblob);
 
 // ── Service Worker (improved caching) ──
 if('serviceWorker' in navigator){
-  const swCode=`
-const CACHE='karenta-v2';
-const OFFLINE_RESP=new Response('<h1>Offline</h1><p>Tidak ada koneksi internet.</p>',{headers:{'Content-Type':'text/html'}});
-self.addEventListener('install',e=>{
-  self.skipWaiting();
-  e.waitUntil(caches.open(CACHE).then(c=>c.add(self.registration.scope)).catch(()=>{}));
-});
-self.addEventListener('activate',e=>{
-  e.waitUntil(Promise.all([
-    self.clients.claim(),
-    caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==CACHE).map(k=>caches.delete(k))))
-  ]));
-});
-self.addEventListener('fetch',e=>{
-  if(e.request.method!=='GET')return;
-  e.respondWith(
-    caches.match(e.request).then(cached=>{
-      if(cached)return cached;
-      return fetch(e.request).then(res=>{
-        if(res.ok){
-          const clone=res.clone();
-          caches.open(CACHE).then(c=>c.put(e.request,clone));
-        }
-        return res;
-      }).catch(()=>OFFLINE_RESP);
-    })
-  );
-});
-  `;
-  const swBlob=new Blob([swCode],{type:'application/javascript'});
-  const swURL=URL.createObjectURL(swBlob);
-  navigator.serviceWorker.register(swURL)
+  // PATCHED: SW registered from file (sw.js) - not blob URL
+  // Blob URL SW is not persistent, cannot be updated correctly, not reliable across browsers
+  // Place sw.js file in the same directory as index.html on your web server
+  navigator.serviceWorker.register('./sw.js', { scope: './' })
     .then(reg=>{
-      // Check for updates
-      reg.addEventListener('updatefound',()=>{
-        const newSW=reg.installing;
-        newSW?.addEventListener('statechange',()=>{
+      console.log('[SW] Registered, scope:', reg.scope);
+      setInterval(()=>reg.update(), 60*60*1000); // check for updates hourly
+      reg.addEventListener('updatefound', ()=>{
+        const newSW = reg.installing;
+        if(!newSW) return;
+        newSW.addEventListener('statechange', ()=>{
           if(newSW.state==='installed'&&navigator.serviceWorker.controller){
-            toast('Update tersedia! Refresh halaman untuk memperbarui.');
+            _showSWUpdateBanner();
           }
         });
       });
     })
-    .catch(()=>{}); // SW optional — app works without it
+    .catch(err=>console.warn('[SW] Registration failed (app still works offline via cache):', err));
+}
+
+function _showSWUpdateBanner(){
+  if(document.getElementById('sw-update-banner')) return;
+  const banner = document.createElement('div');
+  banner.id = 'sw-update-banner';
+  banner.style.cssText='position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--accent);color:#000;padding:12px 20px;border-radius:var(--rs);font-size:13px;font-weight:600;z-index:500;display:flex;gap:12px;align-items:center;box-shadow:0 4px 20px rgba(0,0,0,.4);white-space:nowrap';
+  const msg=document.createElement('span'); msg.textContent='Update tersedia!';
+  const btn=document.createElement('button');
+  btn.textContent='Perbarui Sekarang';
+  btn.style.cssText='background:#000;color:var(--accent);border:none;padding:6px 14px;border-radius:6px;font-weight:700;cursor:pointer;font-size:12px';
+  btn.addEventListener('click',()=>{
+    navigator.serviceWorker.ready.then(r=>r.waiting?.postMessage({type:'SKIP_WAITING'}));
+    setTimeout(()=>location.reload(),500);
+  });
+  const x=document.createElement('button');
+  x.textContent='×'; x.style.cssText='background:none;border:none;color:#000;font-size:18px;cursor:pointer;padding:0 4px';
+  x.addEventListener('click',()=>banner.remove());
+  banner.appendChild(msg); banner.appendChild(btn); banner.appendChild(x);
+  document.body.appendChild(banner);
 }
 
 // ── Install Prompt ──
@@ -2137,10 +2196,17 @@ const DB={
   },
   set(k,v){
     localStorage.setItem('kas_'+k,JSON.stringify(v));
+    // PATCHED: debounced write - prevents write spam, saves Firebase costs
+    if(typeof _fbWrite==='function') _fbWrite(k,v);
   },
   save(k,item){const a=this.get(k),i=a.findIndex(x=>x.id===item.id);if(i>=0)a[i]=item;else a.push(item);this.set(k,a)},
   del(k,id){this.set(k,this.get(k).filter(x=>x.id!==id))},
-  id:()=>Date.now().toString(36)+Math.random().toString(36).slice(2,5)
+  // PATCHED: collision-proof UUID
+  id:()=>{
+    if(typeof crypto!=='undefined'&&crypto.randomUUID) return crypto.randomUUID().replace(/-/g,'').slice(0,20);
+    const a=new Uint8Array(10);crypto.getRandomValues(a);
+    return Array.from(a).map(b=>b.toString(16).padStart(2,'0')).join('');
+  }
 };
 
 // ══════════════════════════════════════════════
@@ -2247,127 +2313,142 @@ DB.set = function(k, v){
 // ── OWNER FIREBASE CONNECTION ──
 // Fungsi terpusat untuk connect Owner ke Firebase dengan await yang benar
 async function _connectOwnerToFirebase(){
+  // PATCHED: Anonymous auth removed. Owner uses hashed local credentials.
+  // Firebase sync available only if owner has a Firebase email account.
   if(!_fbAuth){
-    // Firebase belum init sama sekali
     _cloudMode = false;
     setSyncIndicator(false);
-    toast('⚠️ Firebase tidak tersedia — mode offline', 'err');
+    toast('Firebase tidak tersedia - mode offline', 'err');
     return;
   }
-
   try{
-    // Jika sudah login (anonymous atau email), langsung lanjut
-    if(!_fbAuth.currentUser){
-      await _fbAuth.signInAnonymously();
-    }
-    _cloudMode = true;
-    startCloudSync();
-  } catch(e){
-    console.error('Owner Firebase connect error:', e);
-    // Anonymous auth gagal — coba tetap connect tanpa auth
-    // (akan berhasil jika rules diset .read/.write: true, atau gagal jika rules ketat)
-    if(_fbDb){
+    const fbUser = _fbAuth.currentUser;
+    if(fbUser && fbUser.email){
       _cloudMode = true;
       startCloudSync();
-      toast('⚠️ Anonymous auth gagal — aktifkan di Firebase Console → Authentication → Anonymous');
-    } else {
-      _cloudMode = false;
-      setSyncIndicator(false);
+      return;
     }
+    // No Firebase account for owner - local mode only
+    _cloudMode = false;
+    setSyncIndicator(false);
+    toast('Mode Owner Lokal - data tersimpan di perangkat ini');
+  } catch(e){
+    console.error('[Auth] Owner Firebase connect error:', e);
+    _cloudMode = false;
+    setSyncIndicator(false);
   }
+}
+
+// PATCHED: Listener references stored as proper callbacks for correct .off() cleanup
+let _connRef_cb = null;
+const _data_cb  = {};
+const _writeTimers2 = {};
+const _renderTimers = {};
+const _writeHash    = {};
+
+async function _hashArr(arr) {
+  try {
+    const s = JSON.stringify(arr);
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+    return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('').slice(0,16);
+  } catch { return String(Date.now()); }
+}
+
+// PATCHED: Debounced Firebase write with hash deduplication (prevents duplicate writes & saves costs)
+async function _fbWrite(k, arr){
+  if(!_fbDb || !_cloudMode) return;
+  const hash = await _hashArr(arr);
+  if(_writeHash[k] === hash) return; // data unchanged - skip write
+  clearTimeout(_writeTimers2[k]);
+  _writeTimers2[k] = setTimeout(async()=>{
+    if(!_fbDb || !_cloudMode) return;
+    try{
+      const now = Date.now();
+      await _fbDb.ref('karenta/data/'+k).set(arr);
+      await _fbDb.ref('karenta/sync_meta/'+k).set({ at:now, by:DEVICE_ID, byName:_currentUser?.nama||'Pengguna' });
+      _localWriteTs[k] = now;
+      _writeHash[k]    = hash;
+    } catch(e){ console.error('[Sync] Write failed:', k, e?.code); }
+  }, 500);
 }
 
 function startCloudSync(){
   if(!_fbDb) return;
+  stopCloudSync(); // always cleanup old listeners first - prevents duplicate
 
-  // 1. Monitor connection state
-  if(_connectedRef) _fbDb.ref('.info/connected').off('value', _connectedRef);
-  _connectedRef = _fbDb.ref('.info/connected').on('value', snap=>{
+  _connRef_cb = snap=>{
     const isOnline = snap.val() === true;
     if(isOnline){
       setSyncStatus('live');
-      // Cek dulu apakah Firebase sudah punya data.
-      // Hanya push local jika Firebase kosong (null) — hindari overwrite data device lain.
       _fbDb.ref('karenta/data').get().then(dataSnap=>{
         const fbHasData = dataSnap.exists() && dataSnap.val() !== null;
-        if(fbHasData){
-          // Firebase sudah ada data — biarkan listener realtime yang pull
-        } else {
-          // Firebase kosong — push local data (first device setup)
+        if(!fbHasData){
           ['mobil','pelanggan','booking'].forEach(k=>{
             const local = DB.get(k);
             if(local.length) _fbDb.ref('karenta/data/'+k).set(local).catch(()=>{});
           });
         }
-      }).catch(()=>{
-        // Jika tidak bisa baca, tetap coba push
-        ['mobil','pelanggan','booking'].forEach(k=>{
-          const local = DB.get(k);
-          if(local.length) _fbDb.ref('karenta/data/'+k).set(local).catch(()=>{});
-        });
-      });
+      }).catch(()=>{});
     } else {
       setSyncStatus('reconnecting');
     }
-  });
+  };
+  _fbDb.ref('.info/connected').on('value', _connRef_cb);
 
-  // 2. Real-time data listeners
   ['mobil','pelanggan','booking'].forEach(k=>{
-    if(_listeners[k]) _fbDb.ref('karenta/data/'+k).off('value', _listeners[k]);
-
-    _listeners[k] = _fbDb.ref('karenta/data/'+k).on('value', snap=>{
+    _data_cb[k] = snap=>{
       const val = snap.val();
       if(val === null || val === undefined){
-        // Firebase kosong untuk key ini — seed data default jika local juga kosong
-        if(!DB.get(k).length && k === 'mobil'){
-          seed(); // seed akan isi semua key sekaligus
-        }
+        if(!DB.get(k).length && k === 'mobil') seed();
         return;
       }
-
       const arr = Array.isArray(val) ? val : Object.values(val);
       localStorage.setItem('kas_'+k, JSON.stringify(arr));
-
-      // Remote if more than 1.2s after our own write
-      const isRemote = !_localWriteTs[k] || (Date.now() - _localWriteTs[k] > 1200);
-
-      clearTimeout(_refreshTimers[k]);
-      _refreshTimers[k] = setTimeout(()=>{
+      // PATCHED: 2s own-write window instead of 1.2s heuristic
+      const isRecentOwnWrite = _localWriteTs[k] && (Date.now() - _localWriteTs[k] < 2000);
+      if(isRecentOwnWrite) return;
+      clearTimeout(_renderTimers[k]);
+      _renderTimers[k] = setTimeout(()=>{
         const sec = document.querySelector('.sec.active')?.id?.replace('sec-','');
         if(sec)({dashboard:renderDash,booking:renderBooking,mobil:renderMobil,
                   pelanggan:renderPel,laporan:renderLap,kalender:renderKal})[sec]?.();
-        if(isRemote) onRemoteUpdate(k);
+        onRemoteUpdate(k);
       }, 300);
-    });
+    };
+    _fbDb.ref('karenta/data/'+k).on('value', _data_cb[k]);
   });
 
-  // 3. One-time data
   _fbDb.ref('karenta/arsip_log').get().then(snap=>{
     const val=snap.val();
     if(val&&Array.isArray(val)) saveArsipLog(val);
   }).catch(()=>{});
 
-  // Status 'live' akan di-set oleh listener .info/connected di atas,
-  // bukan di sini, agar tidak misleading sebelum Firebase benar-benar confirm.
   setSyncStatus('reconnecting');
+}
+
+function stopCloudSync(){
+  if(!_fbDb) return;
+  if(_connRef_cb){ _fbDb.ref('.info/connected').off('value', _connRef_cb); _connRef_cb = null; }
+  ['mobil','pelanggan','booking'].forEach(k=>{
+    if(_data_cb[k]){ _fbDb.ref('karenta/data/'+k).off('value', _data_cb[k]); _data_cb[k] = null; }
+    clearTimeout(_writeTimers2[k]); clearTimeout(_renderTimers[k]);
+  });
 }
 
 // Called when an update arrives from another device
 function onRemoteUpdate(key){
   const labels={mobil:'Unit Mobil',pelanggan:'Pelanggan',booking:'Booking'};
-  // Flash the sync indicator
   setSyncStatus('flash');
   setTimeout(()=>setSyncStatus('live'), 1500);
-
-  // Fetch who changed it
+  // PATCHED: plain text only - no innerHTML with user-controlled data
   _fbDb.ref('karenta/sync_meta/'+key).get().then(snap=>{
     const meta = snap.val();
-    const who  = meta?.byName || 'Perangkat lain';
-    if(meta?.by !== DEVICE_ID){
-      toast(`🔄 ${labels[key]||key} diperbarui oleh <strong>${esc(who)}</strong>`);
+    if(meta?.by && meta.by !== DEVICE_ID){
+      const who = String(meta?.byName||'Perangkat lain').slice(0,60);
+      toast((labels[key]||key) + ' diperbarui oleh: ' + who);
     }
   }).catch(()=>{
-    toast(`🔄 ${labels[key]||key} diperbarui dari perangkat lain`);
+    toast((labels[key]||key) + ' diperbarui dari perangkat lain');
   });
 }
 
@@ -2450,24 +2531,128 @@ function togglePass(){
   p.type=p.type==='password'?'text':'password';
 }
 
-// ── OWNER LOCAL CREDENTIALS ──
-const OWNER_ID_KEY  = 'karenta_owner_id';
-const OWNER_PW_KEY  = 'karenta_owner_pw';
+// ── OWNER LOCAL CREDENTIALS (PATCHED: SHA-256 hashed, no plaintext) ──
+const OWNER_ID_KEY   = 'k_oid';
+const OWNER_HASH_KEY = 'k_ohash';
+const _LEGACY_ID_KEY = 'karenta_owner_id';
+const _LEGACY_PW_KEY = 'karenta_owner_pw';
+const _LOGIN_ATTEMPT_KEY = 'k_lat';
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOGIN_LOCKOUT_MS   = 15 * 60 * 1000;
 
-function getOwnerCreds(){
-  return {
-    id: localStorage.getItem(OWNER_ID_KEY) || 'karentabatam',
-    pw: localStorage.getItem(OWNER_PW_KEY) || 'karentabatam'
-  };
+async function _sha256(text) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
 }
 
-function isOwnerLogin(input, pass){
-  const {id, pw} = getOwnerCreds();
-  return (input === id || input === 'karentabatam') && pass === pw;
+function _getLoginAttempts() {
+  try { return JSON.parse(localStorage.getItem(_LOGIN_ATTEMPT_KEY) || '{"count":0,"ts":0}'); }
+  catch { return { count: 0, ts: 0 }; }
+}
+
+function _isLoginLockedOut() {
+  const a = _getLoginAttempts();
+  if (a.count < MAX_LOGIN_ATTEMPTS) return false;
+  return (Date.now() - a.ts) < LOGIN_LOCKOUT_MS;
+}
+
+function _loginLockoutRemaining() {
+  const a = _getLoginAttempts();
+  return Math.ceil((LOGIN_LOCKOUT_MS - (Date.now() - a.ts)) / 1000);
+}
+
+function _recordLoginAttempt(success) {
+  if (success) { localStorage.removeItem(_LOGIN_ATTEMPT_KEY); return; }
+  const a = _getLoginAttempts();
+  if (Date.now() - a.ts > LOGIN_LOCKOUT_MS) a.count = 0;
+  a.count += 1; a.ts = Date.now();
+  localStorage.setItem(_LOGIN_ATTEMPT_KEY, JSON.stringify(a));
+}
+
+async function getOwnerCreds() {
+  return { id: localStorage.getItem(OWNER_ID_KEY)||null, hash: localStorage.getItem(OWNER_HASH_KEY)||null };
+}
+
+async function isOwnerLogin(input, pass) {
+  const { id, hash } = await getOwnerCreds();
+  if (!id || !hash) return false;
+  const inputHash = await _sha256(pass + id); // salt = username
+  return input === id && inputHash === hash;
+}
+
+async function initOwnerCreds(id, pw) {
+  if (!id || id.length < 4) throw new Error('Username minimal 4 karakter');
+  if (!pw || pw.length < 8) throw new Error('Password minimal 8 karakter');
+  localStorage.setItem(OWNER_ID_KEY, id);
+  localStorage.setItem(OWNER_HASH_KEY, await _sha256(pw + id));
+}
+
+async function _migrateOwnerCredentials() {
+  const oldId = localStorage.getItem(_LEGACY_ID_KEY);
+  const oldPw = localStorage.getItem(_LEGACY_PW_KEY);
+  if (oldId && oldPw && !localStorage.getItem(OWNER_ID_KEY)) {
+    try {
+      await initOwnerCreds(oldId, oldPw);
+      localStorage.removeItem(_LEGACY_ID_KEY);
+      localStorage.removeItem(_LEGACY_PW_KEY);
+      console.log('[Auth] Credential migration done.');
+    } catch(e) { console.warn('[Auth] Migration failed:', e.message); }
+  }
+}
+
+function _showFirstTimeSetup() {
+  if (document.getElementById('first-setup-overlay')) return;
+  const ov = document.createElement('div');
+  ov.id = 'first-setup-overlay';
+  ov.style.cssText = 'position:fixed;inset:0;background:#0b0b14;z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  const box = document.createElement('div');
+  box.style.cssText = 'background:var(--surface);border:1px solid var(--border2);border-radius:16px;width:100%;max-width:420px;padding:28px';
+  const title = document.createElement('div');
+  title.style.cssText = "font-family:'Syne',sans-serif;font-size:20px;font-weight:700;margin-bottom:8px";
+  title.textContent = 'Setup Akun Owner';
+  const desc = document.createElement('p');
+  desc.style.cssText = 'font-size:13px;color:var(--text2);margin-bottom:20px;line-height:1.5';
+  desc.textContent = 'Buat username dan password untuk akun Owner. Simpan di tempat aman.';
+  function makeField(label, id, type, ph, ac) {
+    const w = document.createElement('div'); w.style.marginBottom = '14px';
+    const l = document.createElement('label');
+    l.style.cssText = 'display:block;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px';
+    l.textContent = label;
+    const i = document.createElement('input'); i.id=id; i.className='fi'; i.type=type; i.placeholder=ph; i.autocomplete=ac;
+    w.appendChild(l); w.appendChild(i); return w;
+  }
+  const errEl = document.createElement('div');
+  errEl.style.cssText = 'font-size:12px;color:var(--red);margin-bottom:12px;display:none';
+  const btn = document.createElement('button'); btn.className='btn btn-p'; btn.style.width='100%'; btn.textContent='Simpan & Mulai';
+  btn.addEventListener('click', async () => {
+    const id=document.getElementById('fs-id').value.trim();
+    const pw=document.getElementById('fs-pw').value;
+    const pw2=document.getElementById('fs-pw2').value;
+    errEl.style.display='none';
+    try {
+      if(id.length<4) throw new Error('Username minimal 4 karakter');
+      if(pw.length<8) throw new Error('Password minimal 8 karakter');
+      if(pw!==pw2) throw new Error('Konfirmasi password tidak cocok');
+      await initOwnerCreds(id, pw);
+      ov.remove();
+      toast('Setup berhasil! Silakan login dengan akun baru Anda.');
+    } catch(e) { errEl.style.display='block'; errEl.textContent=e.message; }
+  });
+  box.appendChild(title); box.appendChild(desc);
+  box.appendChild(makeField('Username','fs-id','text','Min. 4 karakter','username'));
+  box.appendChild(makeField('Password','fs-pw','password','Min. 8 karakter','new-password'));
+  box.appendChild(makeField('Konfirmasi Password','fs-pw2','password','Ulangi password','new-password'));
+  box.appendChild(errEl); box.appendChild(btn);
+  ov.appendChild(box); document.body.appendChild(ov);
 }
 
 // ── LOGIN ──
 async function doLogin(){
+  // PATCHED: Brute-force protection
+  if (_isLoginLockedOut()) {
+    showLoginErr('Terlalu banyak percobaan gagal. Coba lagi dalam ' + _loginLockoutRemaining() + ' detik.');
+    return;
+  }
   const input      = document.getElementById('li-email').value.trim();
   const pass       = document.getElementById('li-pass').value;
   const rememberMe = document.getElementById('li-remember')?.checked ?? true;
@@ -2482,7 +2667,8 @@ async function doLogin(){
 
   try{
     // ── 1. Cek Owner lokal ──
-    if(isOwnerLogin(input, pass)){
+    if(await isOwnerLogin(input, pass)){  // PATCHED: async (uses hash)
+      _recordLoginAttempt(true); // reset counter on success
       _currentUser = { uid:'owner', email:'owner@karenta.local', nama:'Owner', role:'owner' };
       if(rememberMe) saveSession(_currentUser);
       else clearSession(false);
@@ -2503,6 +2689,7 @@ async function doLogin(){
     }
 
     const cred = await _fbAuth.signInWithEmailAndPassword(input, pass);
+    _recordLoginAttempt(true); // reset counter on success
     const snap = await _fbDb.ref('karenta/users/'+cred.user.uid).get();
     const udata = snap.val() || {};
     _currentUser = {
@@ -2521,11 +2708,13 @@ async function doLogin(){
     toast(`Selamat datang, ${_currentUser.nama}!`);
 
   }catch(e){
+    _recordLoginAttempt(false); // increment failure counter
     let msg = 'Login gagal. Cek username/email dan password.';
     if(e.code === 'auth/user-not-found')     msg = 'Akun tidak ditemukan.';
     if(e.code === 'auth/wrong-password')     msg = 'Password salah.';
     if(e.code === 'auth/invalid-email')      msg = 'Format email tidak valid.';
     if(e.code === 'auth/invalid-credential') msg = 'Username atau password salah.';
+    if(e.code === 'auth/too-many-requests')  msg = 'Terlalu banyak percobaan. Tunggu beberapa menit.';
     showLoginErr(msg);
   }finally{
     btn.textContent = 'Masuk'; btn.disabled = false;
@@ -2543,8 +2732,8 @@ function doLogout(){
     clearSession();
     if(_fbAuth && _currentUser?.role !== 'owner') _fbAuth.signOut().catch(()=>{});
     _currentUser = null; _cloudMode = false;
-    Object.keys(_listeners).forEach(k=>_fbDb?.ref('karenta/data/'+k).off('value',_listeners[k]));
-    _listeners = {};
+    if(typeof stopCloudSync==='function') stopCloudSync(); // PATCHED: proper cleanup
+    _listeners = {}; // keep for backward compat
     setSyncIndicator(false);
     document.getElementById('sb-user').style.display = 'none';
     showLoginScreen();
@@ -2777,7 +2966,8 @@ function renderFirebasePanel(){
 }
 
 // ── OWNER USERNAME ──
-function saveOwnerUsername(){
+async function saveOwnerUsername(){
+  // PATCHED: uses new OWNER_ID_KEY
   const newId=document.getElementById('oc-new-id')?.value.trim();
   if(!newId||newId.length<4){toast('Username minimal 4 karakter!','err');return;}
   localStorage.setItem(OWNER_ID_KEY,newId);
@@ -2787,19 +2977,21 @@ function saveOwnerUsername(){
 }
 
 // ── OWNER PASSWORD ──
-function saveOwnerPassword(){
+async function saveOwnerPassword(){
+  // PATCHED: async, verifies old hash, stores new SHA-256 hash
   const oldPw = document.getElementById('oc-old-pw')?.value;
   const newPw = document.getElementById('oc-new-pw')?.value;
   const newPw2= document.getElementById('oc-new-pw2')?.value;
   const errEl = document.getElementById('oc-pw-err');
   const show  = msg=>{if(errEl){errEl.style.display='block';errEl.textContent=msg;}};
   if(errEl) errEl.style.display='none';
-  const {pw:curPw}=getOwnerCreds();
   if(!oldPw||!newPw||!newPw2){show('Semua kolom wajib diisi!');return;}
-  if(oldPw!==curPw){show('Password lama tidak cocok!');return;}
-  if(newPw.length<6){show('Password baru minimal 6 karakter!');return;}
+  if(newPw.length<8){show('Password baru minimal 8 karakter!');return;}
   if(newPw!==newPw2){show('Konfirmasi password tidak cocok!');return;}
-  localStorage.setItem(OWNER_PW_KEY,newPw);
+  const id=localStorage.getItem(OWNER_ID_KEY)||'';
+  const oldHash=await _sha256(oldPw+id);
+  if(oldHash!==localStorage.getItem(OWNER_HASH_KEY)){show('Password lama tidak cocok!');return;}
+  localStorage.setItem(OWNER_HASH_KEY,await _sha256(newPw+id));
   ['oc-old-pw','oc-new-pw','oc-new-pw2'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   toast('Password Owner berhasil diubah! ✓');
 }
@@ -3215,8 +3407,8 @@ function seed(){
   ];
   DB.set('mobil',ms);
   const ps=[
-    {id:DB.id(),nama:'Ahmad Fauzi',tel:'081234567890',nik:'2172001234560001',email:'ahmad@email.com',alamat:'Jl. Sudirman No.5, Batam Center',createdAt:today()},
-    {id:DB.id(),nama:'Siti Rahayu',tel:'082345678901',nik:'2172001234560002',email:'siti@email.com',alamat:'Jl. Diponegoro No.10, Nagoya',createdAt:today()},
+    {id:DB.id(),nama:'Budi Contoh',tel:'081111111111',nik:'0000000000000001',email:'ahmad@email.com',alamat:'Jl. Sudirman No.5, Batam Center',createdAt:today()},
+    {id:DB.id(),nama:'Ani Sampel',tel:'082222222222',nik:'0000000000000002',email:'siti@email.com',alamat:'Jl. Diponegoro No.10, Nagoya',createdAt:today()},
   ];
   DB.set('pelanggan',ps);
   const tgl2=new Date(Date.now()+2*86400000).toISOString().split('T')[0];
@@ -3321,19 +3513,28 @@ function tick(){
   document.getElementById('topbar-date').textContent=ds;
 }
 tick(); setInterval(tick,30000);
+  // PATCHED: Migrate old plaintext creds + show setup if no creds exist
+  _migrateOwnerCredentials().then(()=>{
+    if(!localStorage.getItem(OWNER_ID_KEY)||!localStorage.getItem(OWNER_HASH_KEY))
+      _showFirstTimeSetup();
+  });
 
 // ══════════════════════════════════════════════
 // TOAST
 // ══════════════════════════════════════════════
 function toast(msg,type='ok'){
+  // PATCHED: textContent only - eliminates XSS risk in toast()
   const box=document.getElementById('toast-box');
+  if(!box) return;
   const t=document.createElement('div');
-  t.className=`toast ${type}`;
-  // allow <strong> and <em> only for safe HTML in toast
-  const safe=msg.replace(/<(?!\/?(strong|em)>)[^>]+>/g,'');
-  t.innerHTML=`<span>${type==='ok'?'✓':'✗'}</span><span>${safe}</span>`;
+  t.className='toast '+(type==='ok'?'ok':'err');
+  const icon=document.createElement('span');
+  icon.textContent=type==='ok'?'✓':'✗';
+  const text=document.createElement('span');
+  text.textContent=String(msg??''); // textContent cannot execute scripts
+  t.appendChild(icon); t.appendChild(text);
   box.appendChild(t);
-  setTimeout(()=>t.remove(),3500);
+  setTimeout(()=>{ t.style.opacity='0'; setTimeout(()=>t.remove(),300); },3200);
 }
 
 // ══════════════════════════════════════════════
@@ -4006,6 +4207,10 @@ function openAddBkg(){
   const tomorrowStr = tomorrow.toISOString().split('T')[0];
   document.getElementById('bkg-mulai').value = todayStr;
   document.getElementById('bkg-selesai').value = '';
+  document.getElementById('bkg-mulai-lbl').textContent = dpFmt ? dpFmt(todayStr) : todayStr;
+  document.getElementById('bkg-mulai-lbl').style.color = 'var(--text)';
+  document.getElementById('bkg-selesai-lbl').textContent = 'Pilih tanggal selesai';
+  document.getElementById('bkg-selesai-lbl').style.color = 'var(--text3)';
   // Jam default
   document.getElementById('bkg-jam-mulai').value = '08:00';
   document.getElementById('bkg-jam-selesai').value = '08:00';
@@ -4028,6 +4233,12 @@ function openEditBkg(id){
   popBkgSelects(b.mobId,b.pelId);
   document.getElementById('bkg-mulai').value=b.mulai;
   document.getElementById('bkg-selesai').value=b.selesai;
+  if(typeof dpFmt==='function'){
+    const mulaiLbl=document.getElementById('bkg-mulai-lbl');
+    const selesaiLbl=document.getElementById('bkg-selesai-lbl');
+    if(mulaiLbl){ mulaiLbl.textContent=b.mulai?dpFmt(b.mulai):'Pilih tanggal mulai'; mulaiLbl.style.color=b.mulai?'var(--text)':'var(--text3)'; }
+    if(selesaiLbl){ selesaiLbl.textContent=b.selesai?dpFmt(b.selesai):'Pilih tanggal selesai'; selesaiLbl.style.color=b.selesai?'var(--text)':'var(--text3)'; }
+  }
   document.getElementById('bkg-jam-mulai').value=b.jamMulai||'08:00';
   document.getElementById('bkg-jam-selesai').value=b.jamSelesai||'08:00';
   document.getElementById('bkg-hph').value=b.hph;
@@ -5088,13 +5299,41 @@ ${perMob.length>0?`
 <div class="noprint" style="text-align:center;margin-top:20px">
   <button onclick="window.print()" style="padding:10px 24px;background:#f0a500;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">🖨️ Print / Save PDF</button>
 </div>
+
+<!-- ══ DATE PICKER POPUP ══ -->
+<div class="dp-overlay" id="dp-overlay" onclick="dpOverlayClick(event)">
+  <div class="dp-popup" id="dp-popup">
+    <div class="dp-hdr">
+      <button class="dp-nav" onclick="dpNav(-1)">&#8249;</button>
+      <div class="dp-my" id="dp-my"></div>
+      <button class="dp-nav" onclick="dpNav(1)">&#8250;</button>
+    </div>
+    <div class="dp-grid" id="dp-dh"></div>
+    <div class="dp-grid" id="dp-grid"></div>
+    <div class="dp-footer">
+      <div class="dp-range-lbl" id="dp-range-lbl">Pilih tanggal mulai</div>
+      <button class="btn btn-s btn-sm" onclick="dpClear()" style="font-size:11px;padding:4px 10px">Reset</button>
+      <button class="btn btn-p btn-sm" onclick="dpDone()" id="dp-done-btn" style="font-size:11px;padding:4px 10px" disabled>Pilih</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>`;
 
+  // PATCHED: null-safe popup handling
   const w=window.open('','_blank');
-  w.document.write(html);
-  w.document.close();
-  setTimeout(()=>w.print(),600);
+  if(!w){
+    toast('Popup diblokir. Mengunduh sebagai file...','err');
+    const blob=new Blob([html],{type:'text/html;charset=utf-8'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob); a.download='laporan-karenta-'+today()+'.html';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href),10000);
+    return;
+  }
+  try{ w.document.write(html); w.document.close(); setTimeout(()=>{ try{w.print();}catch{} },600); }
+  catch(e){ console.error('[Print]',e); w.close(); toast('Gagal membuka halaman print','err'); }
   toast('Laporan print dibuka di tab baru!');
 }
 
@@ -5199,6 +5438,11 @@ function exportBackup(){
 }
 
 function doRestore(input){
+  // PATCHED: Role check + strict schema validation before restore
+  if(!_currentUser || _currentUser.role !== 'owner'){
+    toast('Hanya Owner yang bisa melakukan restore data', 'err');
+    input.value = ''; return;
+  }
   const file=input.files[0];
   if(!file)return;
   document.getElementById('restore-fname').textContent=file.name;
@@ -5206,6 +5450,14 @@ function doRestore(input){
   reader.onload=e=>{
     try{
       const d=JSON.parse(e.target.result);
+      // PATCHED: Strict validation - type + size + ID checks
+      if(!d.meta||typeof d.meta!=='object') throw new Error('Format backup tidak valid: field meta');
+      if(!Array.isArray(d.mobil)||!Array.isArray(d.pelanggan)||!Array.isArray(d.booking))
+        throw new Error('Format backup tidak valid: data harus berupa array');
+      if(d.mobil.length>5000||d.pelanggan.length>5000||d.booking.length>10000)
+        throw new Error('Data terlalu besar - file mungkin tidak valid');
+      if(d.mobil.some(x=>!x||typeof x.id!=='string'||!x.id))
+        throw new Error('Data mobil tidak valid: ada item tanpa ID');
       if(!d.meta||!d.mobil||!d.pelanggan||!d.booking){toast('Format file tidak valid!','err');return;}
       customConfirm(`Restore dari backup "${file.name}"?\nData saat ini akan ditimpa oleh data dari file backup ini.`,()=>{
         DB.set('mobil',d.mobil);
@@ -5392,6 +5644,11 @@ async function openFbRestore(backupId){
 }
 
 async function doFirebaseRestore(){
+  // PATCHED: Role check - only owner can restore data
+  if(!_currentUser || _currentUser.role !== 'owner'){
+    toast('Hanya Owner yang bisa melakukan restore data', 'err');
+    closeM('md-fb-restore'); return;
+  }
   const backupId = document.getElementById('fb-restore-id').value;
   if(!backupId || !_fbDb) return;
 
@@ -5627,6 +5884,238 @@ if(document.readyState === 'loading'){
 } else {
   appInit();
 }
+
+// ══════════════════════════════════════════════
+// DATE PICKER
+// ══════════════════════════════════════════════
+(function(){
+  const MONTHS_DP=['Januari','Februari','Maret','April','Mei','Juni',
+    'Juli','Agustus','September','Oktober','November','Desember'];
+  const DAYS=['Min','Sen','Sel','Rab','Kam','Jum','Sab'];
+
+  let dpY, dpM;         // tampilan bulan/tahun
+  let dpStart=null;     // 'YYYY-MM-DD'
+  let dpEnd=null;
+  let dpHover=null;
+  let dpMode=null;      // 'mulai' | 'selesai' | null
+  let dpMinDate=null;   // tanggal minimum boleh dipilih
+
+  window.dpFmt=function dpFmt(d){
+    if(!d) return '-';
+    const [y,m,dd]=d.split('-');
+    return `${parseInt(dd)} ${MONTHS_DP[parseInt(m)-1]} ${y}`;
+  }
+
+  window.dpOpen=function(mode){
+    dpMode=mode;
+    const now=new Date();
+
+    // Baca nilai saat ini dari hidden inputs
+    const curMulai=document.getElementById('bkg-mulai').value;
+    const curSelesai=document.getElementById('bkg-selesai').value;
+    dpStart=curMulai||null;
+    dpEnd=curSelesai||null;
+
+    // Kalau buka "selesai" dan sudah ada tanggal mulai, mulai dari bulan tanggal mulai
+    let pivotDate=now;
+    if(mode==='selesai'&&dpStart){
+      pivotDate=new Date(dpStart);
+      dpMinDate=dpStart;
+    } else if(mode==='mulai'&&dpStart){
+      pivotDate=new Date(dpStart);
+      dpMinDate=null;
+    } else {
+      dpMinDate=null;
+    }
+
+    dpY=pivotDate.getFullYear();
+    dpM=pivotDate.getMonth();
+
+    // posisikan popup di bawah tombol yang diklik
+    const btn=document.getElementById('bkg-'+mode+'-btn');
+    const rect=btn.getBoundingClientRect();
+    const popup=document.getElementById('dp-popup');
+    const overlay=document.getElementById('dp-overlay');
+    overlay.classList.add('open');
+
+    dpRender();
+
+    // posisi setelah render agar bisa baca ukuran popup
+    requestAnimationFrame(()=>{
+      const pw=popup.offsetWidth;
+      const ph=popup.offsetHeight;
+      const vw=window.innerWidth;
+      const vh=window.innerHeight;
+      let left=rect.left;
+      let top=rect.bottom+6;
+      if(left+pw>vw-8) left=vw-pw-8;
+      if(left<8) left=8;
+      if(top+ph>vh-8) top=rect.top-ph-6;
+      popup.style.left=left+'px';
+      popup.style.top=top+'px';
+    });
+  };
+
+  window.dpClose=function(){
+    document.getElementById('dp-overlay').classList.remove('open');
+    dpMode=null;dpHover=null;
+  };
+
+  window.dpOverlayClick=function(e){
+    if(e.target===document.getElementById('dp-overlay')) dpClose();
+  };
+
+  window.dpNav=function(dir){
+    dpM+=dir;
+    if(dpM>11){dpM=0;dpY++;}
+    if(dpM<0){dpM=11;dpY--;}
+    dpRender();
+  };
+
+  window.dpClear=function(){
+    if(dpMode==='mulai'){
+      dpStart=null;dpEnd=null;
+    } else {
+      dpEnd=null;
+    }
+    dpApply();
+    dpRender();
+  };
+
+  window.dpDone=function(){
+    dpApply();
+    dpClose();
+  };
+
+  function dpApply(){
+    const fmtLbl=d=>d?dpFmt(d):(dpMode==='mulai'?'Pilih tanggal mulai':'Pilih tanggal selesai');
+    // update hidden inputs
+    document.getElementById('bkg-mulai').value=dpStart||'';
+    document.getElementById('bkg-selesai').value=dpEnd||'';
+    // update button labels
+    document.getElementById('bkg-mulai-lbl').textContent=dpStart?dpFmt(dpStart):'Pilih tanggal mulai';
+    document.getElementById('bkg-mulai-lbl').style.color=dpStart?'var(--text)':'var(--text3)';
+    document.getElementById('bkg-selesai-lbl').textContent=dpEnd?dpFmt(dpEnd):'Pilih tanggal selesai';
+    document.getElementById('bkg-selesai-lbl').style.color=dpEnd?'var(--text)':'var(--text3)';
+    // trigger calcBkg
+    try{ calcBkg(); }catch(e){}
+  }
+
+  function dpRender(){
+    // Header
+    document.getElementById('dp-my').textContent=MONTHS_DP[dpM]+' '+dpY;
+
+    // Day headers
+    document.getElementById('dp-dh').innerHTML=
+      DAYS.map(d=>`<div class="dp-dh">${d}</div>`).join('');
+
+    // Grid
+    const fd=new Date(dpY,dpM,1).getDay();
+    const dim=new Date(dpY,dpM+1,0).getDate();
+    const dipm=new Date(dpY,dpM,0).getDate();
+    const todayStr=new Date().toISOString().split('T')[0];
+    let cells=[];
+
+    // prev month padding
+    for(let i=fd-1;i>=0;i--) cells.push({d:dipm-i,ds:null,om:true});
+    // current month
+    for(let d=1;d<=dim;d++){
+      const ds=`${dpY}-${String(dpM+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      cells.push({d,ds,om:false});
+    }
+    // next month padding
+    const rem=Math.ceil((fd+dim)/7)*7-(fd+dim);
+    for(let i=1;i<=rem;i++) cells.push({d:i,ds:null,om:true});
+
+    const effEnd=dpEnd||(dpHover&&dpStart&&dpHover>dpStart?dpHover:null);
+
+    document.getElementById('dp-grid').innerHTML=cells.map(c=>{
+      if(c.om) return`<div class="dp-day dp-om">${c.d}</div>`;
+      const ds=c.ds;
+      const isDisabled=dpMinDate&&ds<dpMinDate;
+      const isToday=ds===todayStr;
+      const isStart=ds===dpStart;
+      const isEnd=ds===dpEnd;
+      const inRange=dpStart&&effEnd&&ds>dpStart&&ds<effEnd;
+      const isEffEnd=ds===effEnd&&effEnd!==dpStart;
+
+      let cls='dp-day';
+      if(isDisabled) cls+=' dp-disabled';
+      if(isToday&&!isStart&&!isEnd) cls+=' dp-today';
+      if(isStart) cls+=' dp-sel-start';
+      if(isEffEnd||isEnd) cls+=' dp-sel-end';
+      if(inRange||(isStart&&effEnd)) cls+=' dp-in-range';
+
+      return`<div class="${cls}" data-ds="${ds}" onclick="dpPick('${ds}')" onmouseenter="dpHoverDay('${ds}')">${c.d}</div>`;
+    }).join('');
+
+    // Footer label
+    const lbl=document.getElementById('dp-range-lbl');
+    const doneBtn=document.getElementById('dp-done-btn');
+    if(dpMode==='mulai'){
+      if(!dpStart){
+        lbl.innerHTML='Pilih <strong>tanggal mulai</strong>';
+        doneBtn.disabled=true;
+      } else if(!dpEnd){
+        lbl.innerHTML=`Mulai: <strong>${dpFmt(dpStart)}</strong> → pilih selesai`;
+        doneBtn.disabled=false;
+      } else {
+        lbl.innerHTML=`<strong>${dpFmt(dpStart)}</strong> → <strong>${dpFmt(dpEnd)}</strong>`;
+        doneBtn.disabled=false;
+      }
+    } else {
+      if(!dpStart){
+        lbl.innerHTML='Pilih tanggal mulai dulu';
+        doneBtn.disabled=true;
+      } else if(!dpEnd){
+        lbl.innerHTML=`Mulai: <strong>${dpFmt(dpStart)}</strong> → pilih selesai`;
+        doneBtn.disabled=false;
+      } else {
+        lbl.innerHTML=`<strong>${dpFmt(dpStart)}</strong> → <strong>${dpFmt(dpEnd)}</strong>`;
+        doneBtn.disabled=false;
+      }
+    }
+  }
+
+  window.dpPick=function(ds){
+    if(dpMode==='selesai'){
+      // mode selesai: langsung set end, jaga konsistensi
+      if(dpStart&&ds<dpStart){
+        // pilih tanggal sebelum mulai → geser mulai
+        dpStart=ds; dpEnd=null;
+      } else {
+        dpEnd=ds;
+      }
+      dpApply();
+      if(dpEnd) dpClose();
+      else dpRender();
+      return;
+    }
+
+    // mode mulai: first click = start, second click (>start) = end, lalu tutup
+    if(!dpStart||dpEnd||(ds<dpStart)){
+      dpStart=ds; dpEnd=null; dpHover=null;
+      dpRender();
+    } else if(ds===dpStart){
+      // klik hari yang sama → anggap 1 hari
+      dpEnd=ds;
+      dpApply();
+      dpClose();
+    } else {
+      dpEnd=ds;
+      dpApply();
+      dpClose();
+    }
+  };
+
+  window.dpHoverDay=function(ds){
+    if(dpStart&&!dpEnd){
+      dpHover=ds;
+      dpRender();
+    }
+  };
+})();
+
 </script>
 </body>
 </html>
