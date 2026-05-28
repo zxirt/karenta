@@ -3,9 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://www.gstatic.com/firebasejs/; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://*.firebasedatabase.app https://*.googleapis.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com; img-src 'self' data: blob:; worker-src 'self'; manifest-src 'self' blob:;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://www.gstatic.com/; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://*.firebasedatabase.app https://*.googleapis.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com https://www.gstatic.com/; img-src 'self' data: blob:; worker-src 'self' blob:; manifest-src 'self' blob:;">
 <title>Karenta Auto Serasi</title>
 <meta name="theme-color" content="#f0a500">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Karenta">
@@ -1942,8 +1943,8 @@ const mfst = {
   name            : 'Karenta Auto Serasi',
   short_name      : 'Karenta',
   description     : 'Sistem Manajemen Rental Mobil',
-  start_url       : './',
-  scope           : './',
+  start_url       : location.pathname.replace(/\/[^\/]*$/, '/') || '/',
+  scope           : location.pathname.replace(/\/[^\/]*$/, '/') || '/',
   display         : 'standalone',
   orientation     : 'any',
   background_color: '#0b0b14',
@@ -1972,7 +1973,8 @@ if('serviceWorker' in navigator){
   // PATCHED: SW registered from file (sw.js) - not blob URL
   // Blob URL SW is not persistent, cannot be updated correctly, not reliable across browsers
   // Place sw.js file in the same directory as index.html on your web server
-  navigator.serviceWorker.register('./sw.js', { scope: './' })
+  const swScope = location.pathname.replace(/\/[^\/]*$/, '/') || '/';
+  navigator.serviceWorker.register('./sw.js', { scope: swScope })
     .then(reg=>{
       console.log('[SW] Registered, scope:', reg.scope);
       setInterval(()=>reg.update(), 60*60*1000); // check for updates hourly
@@ -2801,6 +2803,20 @@ async function doLogin(){
     }
 
     // ── 2. Cek Firebase ──
+    // Jika input bukan format email, tampilkan pesan yang lebih jelas
+    const isEmailFormat = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input);
+    if(!isEmailFormat){
+      // Username yang bukan owner — kemungkinan salah ketik atau belum setup
+      const hasOwnerCreds = localStorage.getItem(OWNER_ID_KEY) && localStorage.getItem(OWNER_HASH_KEY);
+      if(!hasOwnerCreds){
+        // First time — belum ada credential owner tersimpan, tampilkan setup
+        showLoginErr('Belum ada akun Owner. Silakan setup di bawah ini.');
+        setTimeout(() => _showFirstTimeSetup(), 300);
+      } else {
+        showLoginErr('Username atau password salah.');
+      }
+      return;
+    }
     if(!_fbAuth) initFirebase(FIREBASE_CONFIG_HARDCODED);
     if(!_fbAuth){
       showLoginErr('Koneksi Firebase gagal. Pastikan ada internet dan coba lagi.');
@@ -2835,8 +2851,12 @@ async function doLogin(){
     if(e.code === 'auth/invalid-credential') msg = 'Username atau password salah.';
     if(e.code === 'auth/too-many-requests')  msg = 'Terlalu banyak percobaan. Tunggu beberapa menit.';
     showLoginErr(msg);
-  }finally{
-    btn.textContent = 'Masuk'; btn.disabled = false;
+  } catch(outerErr){
+    console.error('[Login] Unexpected:', outerErr);
+    showLoginErr('Terjadi kesalahan. Coba lagi.');
+  } finally{
+    // Always re-enable the button no matter what
+    try{ const b=document.getElementById('li-btn'); if(b){b.textContent='Masuk';b.disabled=false;} }catch{}
   }
 }
 
@@ -3651,8 +3671,11 @@ function tick(){
 tick(); setInterval(tick,30000);
   // PATCHED: Migrate old plaintext creds + show setup if no creds exist
   _migrateOwnerCredentials().then(()=>{
-    if(!localStorage.getItem(OWNER_ID_KEY)||!localStorage.getItem(OWNER_HASH_KEY))
-      _showFirstTimeSetup();
+    // Small delay to let login screen render first
+    setTimeout(()=>{
+      if(!localStorage.getItem(OWNER_ID_KEY)||!localStorage.getItem(OWNER_HASH_KEY))
+        _showFirstTimeSetup();
+    }, 500);
   });
 
 // ══════════════════════════════════════════════
