@@ -1,0 +1,33 @@
+{
+  "rules": {
+    "karenta": {
+      "data": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        "mobil": {
+          ".read": "auth != null",
+          ".write": "auth != null"
+        },
+        "pelanggan": {
+          ".read": "auth != null",
+          ".write": "auth != null"
+        },
+        "booking": {
+          ".read": "auth != null",
+          ".write": "auth != null"
+        }
+      },
+      "users": {
+        ".read": "auth != null",
+        "$uid": {
+          ".read": "auth != null",
+          ".write": "auth != null && (auth.uid == $uid || root.child('karenta/users/' + auth.uid + '/role').val() == 'admin' || root.child('karenta/users/' + auth.uid + '/role').val() == 'owner')"
+        }
+      },
+      "meta": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    }
+  }
+}
