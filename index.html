@@ -3,21 +3,28 @@
 <html lang="id">
 <head>
 <script>
+// Force clear old service worker caches on load
+// This runs synchronously before SW can intercept
 if('serviceWorker' in navigator){
-  // Force SW update + clear ALL caches setiap load
-  navigator.serviceWorker.getRegistrations().then(regs=>{
-    regs.forEach(r=>r.update());
-  });
+  // Clear all old caches that might contain CSP-broken index.html
   if(window.caches){
-    caches.keys().then(names=>{
-      names.forEach(name=>caches.delete(name));
+    caches.keys().then(function(names){
+      names.forEach(function(name){
+        if(name.indexOf('karenta-v2')>=0 || name.indexOf('-v3')>=0 || name.indexOf('-v1')>=0){
+          caches.delete(name);
+          console.log('[Cache] Cleared old cache:', name);
+        }
+      });
     });
   }
 }
 </script>
 <!-- CSP: single-line, browser-compatible, covers all Firebase/CDN/PWA needs -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self' blob: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://*.gstatic.com https://*.googleapis.com https://*.firebaseapp.com https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://*.gstatic.com; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' blob: https://*.firebaseio.com https://*.firebasedatabase.app wss://*.firebasedatabase.app https://*.googleapis.com https://*.gstatic.com https://*.firebaseapp.com https://fonts.googleapis.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com; img-src 'self' data: blob: https://*.gstatic.com; worker-src 'self' blob:; manifest-src 'self' blob:; frame-src 'self' https://*.firebaseapp.com;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' blob: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://*.gstatic.com https://*.googleapis.com https://*.firebaseapp.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://*.gstatic.com; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' https://*.firebaseio.com https://*.firebasedatabase.app wss://*.firebasedatabase.app https://*.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://*.gstatic.com https://*.firebaseapp.com https://fonts.googleapis.com; img-src 'self' data: blob: https://*.gstatic.com https://*.googleapis.com https://*.firebaseapp.com; worker-src 'self' blob:; manifest-src 'self'; frame-src 'self' https://*.firebaseapp.com;">
 <meta charset="UTF-8">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Karenta Auto Serasi</title>
 <meta name="theme-color" content="#f0a500">
@@ -2259,6 +2266,10 @@ function getFbConfig(){
 
 function initFirebase(cfg){
   if(typeof firebase === 'undefined') return false;
+  // PATCH: verify compat modules loaded — CSP may block individual scripts
+  if(typeof firebase.initializeApp !== 'function') return false;
+  if(typeof firebase.auth !== 'function') return false;
+  if(typeof firebase.database !== 'function') return false;
   try{
     try{
       _fbApp = firebase.app('karenta');
@@ -2825,9 +2836,7 @@ async function doLogin(){
 
   try{
     // ── 1. Cek Owner lokal ──
-    let ownerOk = false;
-    try { ownerOk = await isOwnerLogin(input, pass); } catch(ownerErr) { console.warn('[Login] isOwnerLogin err:', ownerErr); }
-    if(ownerOk){  // PATCHED: async (uses hash)
+    if(await isOwnerLogin(input, pass)){  // PATCHED: async (uses hash)
       _recordLoginAttempt(true); // reset counter on success
       _currentUser = { uid:'owner', email:'owner@karenta.local', nama:'Owner', role:'owner' };
       if(rememberMe) saveSession(_currentUser);
@@ -2856,13 +2865,19 @@ async function doLogin(){
       }
       return;
     }
-    if(!_fbAuth) initFirebase(FIREBASE_CONFIG_HARDCODED);
     if(!_fbAuth){
-      showLoginErr('Koneksi Firebase gagal. Pastikan ada internet dan coba lagi.');
-      return;
+      const ok = initFirebase(FIREBASE_CONFIG_HARDCODED);
+      if(!ok || !_fbAuth){
+        showLoginErr('Koneksi Firebase gagal. Pastikan ada internet dan coba lagi.');
+        return;
+      }
     }
 
-    const cred = await _fbAuth.signInWithEmailAndPassword(input, pass);
+    // PATCH: 10s timeout — prevents infinite "Loading..." when Firebase hangs
+    const cred = await Promise.race([
+      _fbAuth.signInWithEmailAndPassword(input, pass),
+      new Promise((_,rej)=>setTimeout(()=>rej({code:'auth/timeout'}),10000))
+    ]);
     _recordLoginAttempt(true); // reset counter on success
     const snap = await _fbDb.ref('karenta/users/'+cred.user.uid).get();
     const udata = snap.val() || {};
@@ -2889,6 +2904,8 @@ async function doLogin(){
     if(e.code === 'auth/invalid-email')      msg = 'Format email tidak valid.';
     if(e.code === 'auth/invalid-credential') msg = 'Username atau password salah.';
     if(e.code === 'auth/too-many-requests')  msg = 'Terlalu banyak percobaan. Tunggu beberapa menit.';
+    if(e.code === 'auth/timeout')            msg = 'Koneksi Firebase timeout — cek internet atau refresh halaman.';
+    if(e.code === 'auth/network-request-failed') msg = 'Tidak ada koneksi internet.';
     if(!e.code){ console.error('[Login] Unexpected:', e); msg = 'Terjadi kesalahan. Coba lagi.'; }
     showLoginErr(msg);
   } finally{
