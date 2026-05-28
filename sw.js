@@ -4,10 +4,10 @@
  * Cache versioning: bump CACHE_VERSION setiap deploy baru
  */
 
-const CACHE_VERSION = 'v4';
+const CACHE_VERSION = 'v5';
 const CACHE_STATIC  = `karenta-static-${CACHE_VERSION}`;
 // Also nuke old cache names explicitly
-const OLD_CACHES = ['karenta-v2','karenta-static-v3','karenta-fonts-v3'];
+const OLD_CACHES = ['karenta-v2','karenta-static-v3','karenta-fonts-v3','karenta-static-v4','karenta-fonts-v4'];
 const CACHE_FONTS   = `karenta-fonts-${CACHE_VERSION}`;
 
 // Maksimum ukuran cache (bytes) — 50MB
@@ -17,6 +17,7 @@ const MAX_CACHE_SIZE = 50 * 1024 * 1024;
 const PRECACHE_URLS = [
   './',
   './index.html',
+  './manifest.json',
 ];
 
 // Pattern URL yang tidak boleh di-cache
