@@ -3717,7 +3717,7 @@ function toast(msg,type='ok'){
 // MODAL
 // ══════════════════════════════════════════════
 const openM=id=>document.getElementById(id).classList.add('open');
-const closeM=id=>document.getElementById(id).classList.remove('open');
+const closeM=id=>{const el=document.getElementById(id);if(el)el.classList.remove('open');};
 document.querySelectorAll('.mdrop').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)m.classList.remove('open')}));
 
 // ══════════════════════════════════════════════
