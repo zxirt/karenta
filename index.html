@@ -1,10 +1,9 @@
 <!DOCTYPE html>
-<!-- Karenta Build: 2026-05-28 05:29 UTC — syntax-fixed -->
+<!-- Karenta Build: 2026-05-28 05:39 UTC — csp-removed, manifest-fixed -->
 <html lang="id">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://www.gstatic.com/; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://*.firebasedatabase.app https://*.googleapis.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com https://www.gstatic.com/; img-src 'self' data: blob:; worker-src 'self' blob:; manifest-src 'self' blob:;">
 <title>Karenta Auto Serasi</title>
 <meta name="theme-color" content="#f0a500">
 <meta name="mobile-web-app-capable" content="yes">
@@ -1944,8 +1943,8 @@ const mfst = {
   name            : 'Karenta Auto Serasi',
   short_name      : 'Karenta',
   description     : 'Sistem Manajemen Rental Mobil',
-  start_url       : location.pathname.replace(/\/[^\/]*$/, '/') || '/',
-  scope           : location.pathname.replace(/\/[^\/]*$/, '/') || '/',
+  start_url       : location.origin + location.pathname.replace(/\/[^\/]*$/, '/'),
+  scope           : location.origin + location.pathname.replace(/\/[^\/]*$/, '/'),
   display         : 'standalone',
   orientation     : 'any',
   background_color: '#0b0b14',
