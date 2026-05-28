@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self' https://zxirt.github.io; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://www.gstatic.com https://*.gstatic.com https://*.googleapis.com https://apis.google.com https://zxirt.github.io; script-src-elem 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://www.gstatic.com https://*.gstatic.com https://*.googleapis.com https://apis.google.com https://zxirt.github.io; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; font-src 'self' https://fonts.gstatic.com https://*.gstatic.com; connect-src 'self' https://*.firebasedatabase.app https://*.googleapis.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com https://www.gstatic.com https://*.gstatic.com https://apis.google.com https://zxirt.github.io wss://*.firebasedatabase.app; img-src 'self' data: blob: https://zxirt.github.io; worker-src 'self' blob: https://zxirt.github.io; manifest-src 'self' https://zxirt.github.io;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' https://zxirt.github.io; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://www.gstatic.com https://*.gstatic.com https://*.googleapis.com https://apis.google.com https://zxirt.github.io; script-src-elem 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://www.gstatic.com https://*.gstatic.com https://*.googleapis.com https://apis.google.com https://zxirt.github.io; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; font-src 'self' https://fonts.gstatic.com https://*.gstatic.com; connect-src 'self' https://*.firebasedatabase.app https://*.googleapis.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com https://www.gstatic.com https://*.gstatic.com https://apis.google.com https://zxirt.github.io wss://*.firebasedatabase.app; img-src 'self' data: blob: https://zxirt.github.io; worker-src 'self' blob: https://zxirt.github.io; manifest-src 'self' blob: https://zxirt.github.io;">
 <title>Karenta Auto Serasi</title>
 <meta name="theme-color" content="#f0a500">
 <meta name="mobile-web-app-capable" content="yes">
@@ -1988,33 +1988,44 @@ function _injectManifestWithIcons(){
   }
 })();
 
-// ── Service Worker (improved caching) ──
+// ── Service Worker ──
 if('serviceWorker' in navigator){
-  // PATCHED: Unregister SW lama (blob URL) dulu, lalu register SW baru dari file
-  navigator.serviceWorker.getRegistrations().then(regs => {
-    regs.forEach(reg => {
-      if(reg.active && reg.active.scriptURL && reg.active.scriptURL.startsWith('blob:')) {
-        console.log('[SW] Unregistering old blob SW:', reg.active.scriptURL);
-        reg.unregister();
+  // Langkah 1: unregister SW lama (blob/stale), bersihkan cache lama, register baru
+  navigator.serviceWorker.getRegistrations().then(async regs => {
+    for(const reg of regs){
+      const scriptURL = reg.active?.scriptURL || reg.installing?.scriptURL || '';
+      if(scriptURL.startsWith('blob:') || (!scriptURL.includes('sw.js') && scriptURL !== '')){
+        console.log('[SW] Unregistering stale SW:', scriptURL);
+        await reg.unregister();
       }
-    });
-  });
-  // Register SW dari file statis (bukan blob URL)
-  navigator.serviceWorker.register('./sw.js', { scope: './' })
-    .then(reg=>{
-      console.log('[SW] Registered, scope:', reg.scope);
-      setInterval(()=>reg.update(), 60*60*1000); // check for updates hourly
-      reg.addEventListener('updatefound', ()=>{
-        const newSW = reg.installing;
-        if(!newSW) return;
-        newSW.addEventListener('statechange', ()=>{
-          if(newSW.state==='installed'&&navigator.serviceWorker.controller){
-            _showSWUpdateBanner();
-          }
-        });
+    }
+    // Langkah 2: hapus semua cache versi lama
+    const CURRENT_CACHES = ['karenta-static-v5', 'karenta-fonts-v5'];
+    const allKeys = await caches.keys();
+    await Promise.all(
+      allKeys
+        .filter(k => !CURRENT_CACHES.includes(k))
+        .map(k => { console.log('[SW] Force-clearing old cache:', k); return caches.delete(k); })
+    );
+    // Langkah 3: register SW baru
+    return navigator.serviceWorker.register('./sw.js', { scope: './' });
+  })
+  .then(reg => {
+    if(!reg) return;
+    console.log('[SW] Registered, scope:', reg.scope);
+    if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
+    setInterval(()=>reg.update(), 60*60*1000);
+    reg.addEventListener('updatefound', ()=>{
+      const newSW = reg.installing;
+      if(!newSW) return;
+      newSW.addEventListener('statechange', ()=>{
+        if(newSW.state==='installed'&&navigator.serviceWorker.controller){
+          _showSWUpdateBanner();
+        }
       });
-    })
-    .catch(err=>console.warn('[SW] Registration failed (app still works offline via cache):', err));
+    });
+  })
+  .catch(err=>console.warn('[SW] Registration failed (app still works):', err));
 }
 
 function _showSWUpdateBanner(){

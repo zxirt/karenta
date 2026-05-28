@@ -1,42 +1,39 @@
 /**
  * Karenta Auto Serasi — Service Worker (Production Grade)
- * Strategy: Stale-While-Revalidate untuk assets, Network-First untuk API
+ * Strategy: Network-First untuk HTML/manifest, Stale-While-Revalidate untuk assets
  * Cache versioning: bump CACHE_VERSION setiap deploy baru
  */
 
 // ── SELF-UNREGISTER jika SW ini ternyata dimuat dari blob URL ──
-// Ini terjadi kalau versi lama masih aktif di cache browser
 if (self.location.protocol === 'blob:') {
   console.warn('[SW] Detected blob: URL — unregistering self immediately');
   self.registration.unregister();
 }
 
-const CACHE_VERSION = 'v4';
+// !! BUMP INI SETIAP DEPLOY — paksa browser hapus cache lama !!
+const CACHE_VERSION = 'v5';
 const CACHE_STATIC  = `karenta-static-${CACHE_VERSION}`;
 const CACHE_FONTS   = `karenta-fonts-${CACHE_VERSION}`;
 
-// Maksimum ukuran cache (bytes) — 50MB
 const MAX_CACHE_SIZE = 50 * 1024 * 1024;
 
-// URL yang harus di-cache saat install
-// Mendukung GitHub Pages subfolder (/karenta/) maupun root (/)
-const SCOPE = self.registration.scope; // e.g. https://zxirt.github.io/karenta/
+const SCOPE = self.registration.scope;
 const PRECACHE_URLS = [
   SCOPE,
   SCOPE + 'index.html',
   SCOPE + 'manifest.json',
 ];
 
-// Pattern URL yang tidak boleh di-cache
+// URL yang TIDAK boleh di-cache — selalu network
 const SKIP_CACHE_PATTERNS = [
   /firebasedatabase\.app/,
   /googleapis\.com\/identitytoolkit/,
   /securetoken\.googleapis\.com/,
   /chrome-extension:\/\//,
-  /\.map$/, // source maps — jangan di-cache, biarkan browser handle
+  /\.map$/,
 ];
 
-// Pattern CDN yang bisa di-cache (font, library statis)
+// CDN yang boleh di-cache (font, lib statis)
 const CDN_CACHE_PATTERNS = [
   /fonts\.googleapis\.com/,
   /fonts\.gstatic\.com/,
@@ -46,6 +43,7 @@ const CDN_CACHE_PATTERNS = [
 
 // ── INSTALL ──
 self.addEventListener('install', event => {
+  // skipWaiting langsung agar SW baru segera aktif & hapus cache lama
   event.waitUntil(
     caches.open(CACHE_STATIC)
       .then(cache => cache.addAll(PRECACHE_URLS))
@@ -57,13 +55,11 @@ self.addEventListener('install', event => {
   );
 });
 
-// ── ACTIVATE — bersihkan cache lama ──
+// ── ACTIVATE — hapus SEMUA cache lama tanpa terkecuali ──
 self.addEventListener('activate', event => {
   const allowedCaches = [CACHE_STATIC, CACHE_FONTS];
-
   event.waitUntil(
     Promise.all([
-      // Hapus semua cache versi lama
       caches.keys().then(keys =>
         Promise.all(
           keys
@@ -74,7 +70,6 @@ self.addEventListener('activate', event => {
             })
         )
       ),
-      // Claim semua client segera
       self.clients.claim(),
     ])
   );
@@ -83,30 +78,32 @@ self.addEventListener('activate', event => {
 // ── FETCH ──
 self.addEventListener('fetch', event => {
   const { request } = event;
-
-  // Hanya handle GET
   if (request.method !== 'GET') return;
 
   const url = new URL(request.url);
 
-  // Skip Firebase & auth endpoints — selalu network
-  if (SKIP_CACHE_PATTERNS.some(p => p.test(request.url))) {
-    return; // biarkan browser handle langsung
-  }
+  // Jangan cache Firebase & auth
+  if (SKIP_CACHE_PATTERNS.some(p => p.test(request.url))) return;
 
-  // CDN assets — stale-while-revalidate dengan cache FONTS
+  // CDN assets — stale-while-revalidate
   if (CDN_CACHE_PATTERNS.some(p => p.test(request.url))) {
     event.respondWith(staleWhileRevalidate(request, CACHE_FONTS));
     return;
   }
 
-  // App shell (halaman utama) — network-first dengan fallback cache
-  if (url.pathname === '/' || url.pathname.endsWith('.html')) {
+  // HTML + manifest.json — SELALU network-first agar CSP & config terbaru langsung terpakai
+  const isAppShell = url.pathname.endsWith('.html')
+    || url.pathname.endsWith('/')
+    || url.pathname.endsWith('/karenta')
+    || url.pathname.endsWith('/karenta/')
+    || url.pathname.endsWith('manifest.json');  // <-- penting: manifest juga network-first
+
+  if (isAppShell) {
     event.respondWith(networkFirstWithFallback(request));
     return;
   }
 
-  // Assets lain — stale-while-revalidate
+  // Assets lain (JS, CSS, gambar) — stale-while-revalidate
   event.respondWith(staleWhileRevalidate(request, CACHE_STATIC));
 });
 
@@ -115,7 +112,6 @@ async function staleWhileRevalidate(request, cacheName) {
   const cache = await caches.open(cacheName);
   const cached = await cache.match(request);
 
-  // Revalidate di background (tidak ditunggu)
   const networkPromise = fetch(request)
     .then(async response => {
       if (response.ok) {
@@ -126,7 +122,6 @@ async function staleWhileRevalidate(request, cacheName) {
     })
     .catch(() => null);
 
-  // Return cache langsung jika ada, sambil update di background
   return cached || await networkPromise || offlineFallback(request);
 }
 
@@ -186,19 +181,15 @@ function offlineFallback(request) {
 async function enforceCacheSize(cache, maxBytes) {
   try {
     const keys = await cache.keys();
-    if (keys.length < 50) return; // skip kalau masih sedikit
-
-    // Estimasi kasar — hapus 10 entry terlama jika terlalu banyak
+    if (keys.length < 50) return;
     if (keys.length > 200) {
       const toDelete = keys.slice(0, 20);
       await Promise.all(toDelete.map(k => cache.delete(k)));
     }
-  } catch {
-    // non-fatal
-  }
+  } catch { /* non-fatal */ }
 }
 
-// ── MESSAGE HANDLER (dari app: paksa update) ──
+// ── MESSAGE HANDLER ──
 self.addEventListener('message', event => {
   if (event.data?.type === 'SKIP_WAITING') {
     event.waitUntil(self.skipWaiting());
