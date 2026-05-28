@@ -2842,20 +2842,17 @@ async function doLogin(){
     startCloudSync();
     toast(`Selamat datang, ${_currentUser.nama}!`);
 
-  }catch(e){
-    _recordLoginAttempt(false); // increment failure counter
+  } catch(e){
+    _recordLoginAttempt(false);
     let msg = 'Login gagal. Cek username/email dan password.';
     if(e.code === 'auth/user-not-found')     msg = 'Akun tidak ditemukan.';
     if(e.code === 'auth/wrong-password')     msg = 'Password salah.';
     if(e.code === 'auth/invalid-email')      msg = 'Format email tidak valid.';
     if(e.code === 'auth/invalid-credential') msg = 'Username atau password salah.';
     if(e.code === 'auth/too-many-requests')  msg = 'Terlalu banyak percobaan. Tunggu beberapa menit.';
+    if(!e.code){ console.error('[Login] Unexpected:', e); msg = 'Terjadi kesalahan. Coba lagi.'; }
     showLoginErr(msg);
-  } catch(outerErr){
-    console.error('[Login] Unexpected:', outerErr);
-    showLoginErr('Terjadi kesalahan. Coba lagi.');
   } finally{
-    // Always re-enable the button no matter what
     try{ const b=document.getElementById('li-btn'); if(b){b.textContent='Masuk';b.disabled=false;} }catch{}
   }
 }
