@@ -980,7 +980,7 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
     </button>
     <span class="topbar-title" id="topbar-title">Dashboard</span>
-    <div id="sync-indicator" style="display:none;align-items:center;gap:5px;font-size:11px;color:var(--text3);flex-shrink:0;cursor:pointer" onclick="syncNow()" title="Klik untuk sync manual">
+    <div id="sync-indicator" style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text3);flex-shrink:0;cursor:pointer" onclick="_currentUser?.role==='owner'?_showOwnerCloudModal(true):syncNow()" title="Klik untuk sync manual / aktifkan cloud">
       <div id="sync-dot" style="width:7px;height:7px;border-radius:50%;background:var(--green);transition:background .3s"></div>
       <span id="sync-lbl" style="transition:color .3s">Live</span>
     </div>
@@ -1398,6 +1398,15 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
               <li><span class="lbl">Username</span><span class="val" id="oc-cur-id" style="font-family:monospace;color:var(--accent)">-</span></li>
               <li><span class="lbl">Password</span><span class="val" style="color:var(--text3)">••••••••</span></li>
             </ul>
+            <!-- Cloud Sync Status -->
+            <div style="margin-top:12px;padding:12px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:10px">
+              <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">☁️ Cloud Sync</div>
+              <div id="oc-cloud-status" style="font-size:13px;margin-bottom:10px"><span style="color:var(--text3)">● Mode Lokal — data hanya di perangkat ini</span></div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button id="oc-cloud-connect-btn" class="btn btn-s" onclick="closeM('md-settings');_showOwnerCloudModal(true)" style="display:inline-flex;align-items:center;gap:6px">☁️ Aktifkan Cloud</button>
+                <button id="oc-cloud-logout-btn" class="btn btn-s" onclick="doOwnerCloudLogout()" style="display:none;align-items:center;gap:6px;color:var(--red)">❌ Putuskan Cloud</button>
+              </div>
+            </div>
             <div style="margin-top:10px;font-size:11.5px;color:var(--text3)">
               ℹ️ Kredensial ini tersimpan lokal di browser. Digunakan untuk login tanpa Firebase.
             </div>
@@ -2312,31 +2321,128 @@ DB.set = function(k, v){
 
 // ── OWNER FIREBASE CONNECTION ──
 // Fungsi terpusat untuk connect Owner ke Firebase dengan await yang benar
+// ── OWNER CLOUD CREDENTIALS (stored separately from local owner auth) ──
+const OWNER_CLOUD_KEY = 'k_ocld'; // stores {email, remember} - NO password stored
+
+function _getSavedCloudEmail(){
+  try { const d=JSON.parse(localStorage.getItem(OWNER_CLOUD_KEY)||'{}'); return d.email||''; }
+  catch { return ''; }
+}
+
+function _saveCloudEmail(email){
+  localStorage.setItem(OWNER_CLOUD_KEY, JSON.stringify({email, savedAt: Date.now()}));
+}
+
+function _clearCloudEmail(){
+  localStorage.removeItem(OWNER_CLOUD_KEY);
+}
+
 async function _connectOwnerToFirebase(){
-  // PATCHED: Anonymous auth removed. Owner uses hashed local credentials.
-  // Firebase sync available only if owner has a Firebase email account.
   if(!_fbAuth){
     _cloudMode = false;
     setSyncIndicator(false);
-    toast('Firebase tidak tersedia - mode offline', 'err');
     return;
   }
   try{
     const fbUser = _fbAuth.currentUser;
     if(fbUser && fbUser.email){
+      // Already signed in to Firebase - activate cloud
       _cloudMode = true;
       startCloudSync();
       return;
     }
-    // No Firebase account for owner - local mode only
+    // No active Firebase session - show cloud login modal
     _cloudMode = false;
     setSyncIndicator(false);
-    toast('Mode Owner Lokal - data tersimpan di perangkat ini');
+    _showOwnerCloudModal();
   } catch(e){
     console.error('[Auth] Owner Firebase connect error:', e);
     _cloudMode = false;
     setSyncIndicator(false);
   }
+}
+
+function _showOwnerCloudModal(autoClose=false){
+  openM('md-owner-cloud');
+  // Pre-fill saved email
+  const emailEl = document.getElementById('oc-email');
+  if(emailEl) emailEl.value = _getSavedCloudEmail();
+  const errEl = document.getElementById('oc-cloud-err');
+  if(errEl){ errEl.style.display='none'; errEl.textContent=''; }
+  if(autoClose){
+    const skipBtn = document.getElementById('oc-skip-btn');
+    if(skipBtn) skipBtn.style.display='block';
+  }
+}
+
+async function doOwnerCloudLogin(){
+  const email   = (document.getElementById('oc-email')?.value||'').trim();
+  const pass    = document.getElementById('oc-cloud-pass')?.value||'';
+  const remember= document.getElementById('oc-remember')?.checked ?? true;
+  const errEl   = document.getElementById('oc-cloud-err');
+  const btn     = document.getElementById('oc-login-btn');
+
+  if(!email || !pass){
+    if(errEl){ errEl.style.display='block'; errEl.textContent='Email dan password wajib diisi'; }
+    return;
+  }
+
+  if(btn){ btn.textContent='Menghubungkan...'; btn.disabled=true; }
+  if(errEl){ errEl.style.display='none'; errEl.textContent=''; }
+
+  try{
+    if(!_fbAuth) initFirebase(FIREBASE_CONFIG_HARDCODED);
+    await _fbAuth.signInWithEmailAndPassword(email, pass);
+
+    // Save email for next time (NOT password)
+    if(remember) _saveCloudEmail(email);
+    else _clearCloudEmail();
+
+    _cloudMode = true;
+    closeM('md-owner-cloud');
+    startCloudSync();
+    toast('Cloud aktif! Data tersinkron ke Firebase.');
+
+    // Also update Firebase user node if not exists
+    const fbUser = _fbAuth.currentUser;
+    if(fbUser && _fbDb){
+      const snap = await _fbDb.ref('karenta/users/'+fbUser.uid).get();
+      if(!snap.exists()){
+        await _fbDb.ref('karenta/users/'+fbUser.uid).set({
+          email: email,
+          nama : _currentUser?.nama || 'Owner',
+          role : 'owner',
+        });
+      }
+    }
+
+  } catch(e){
+    let msg = 'Login Firebase gagal. Cek email dan password.';
+    if(e.code==='auth/user-not-found')     msg = 'Akun Firebase tidak ditemukan. Buat dulu di Firebase Console.';
+    if(e.code==='auth/wrong-password')     msg = 'Password Firebase salah.';
+    if(e.code==='auth/invalid-email')      msg = 'Format email tidak valid.';
+    if(e.code==='auth/invalid-credential') msg = 'Email atau password Firebase salah.';
+    if(e.code==='auth/network-request-failed') msg = 'Tidak ada koneksi internet.';
+    if(e.code==='auth/too-many-requests')  msg = 'Terlalu banyak percobaan. Tunggu beberapa menit.';
+    if(errEl){ errEl.style.display='block'; errEl.textContent=msg; }
+  } finally {
+    if(btn){ btn.textContent='Hubungkan ke Cloud'; btn.disabled=false; }
+  }
+}
+
+function doOwnerCloudSkip(){
+  closeM('md-owner-cloud');
+  toast('Mode Lokal aktif. Data tersimpan di perangkat ini saja.');
+}
+
+async function doOwnerCloudLogout(){
+  if(!_fbAuth?.currentUser) return;
+  stopCloudSync();
+  await _fbAuth.signOut();
+  _cloudMode = false;
+  setSyncIndicator(false);
+  _clearCloudEmail();
+  toast('Terputus dari Firebase Cloud.');
 }
 
 // PATCHED: Listener references stored as proper callbacks for correct .off() cleanup
@@ -2424,6 +2530,13 @@ function startCloudSync(){
   }).catch(()=>{});
 
   setSyncStatus('reconnecting');
+
+  // Auto-reconnect: if owner had saved their cloud email, try to re-auth silently
+  // Firebase SDK handles persistence internally - if session is still valid, currentUser is set
+  if(_currentUser?.role==='owner' && _fbAuth?.currentUser?.email){
+    _cloudMode = true;
+    console.log('[Cloud] Auto-reconnected with existing Firebase session');
+  }
 }
 
 function stopCloudSync(){
@@ -2460,6 +2573,7 @@ function setSyncStatus(status){
   if(!ind) return;
   ind.style.display = 'flex';
   const states = {
+    offline      : {bg:'var(--text3)',  dot:'var(--text3)',  lbl:'Offline', lblColor:'var(--text3)'},
     live         : {bg:'var(--green)',  txt:'● Live',        color:'var(--green)'},
     reconnecting : {bg:'var(--accent)', txt:'◌ Menyambung…', color:'var(--accent)'},
     offline      : {bg:'var(--red)',    txt:'○ Offline',     color:'var(--red)'},
@@ -2473,10 +2587,11 @@ function setSyncStatus(status){
 
 // setSyncIndicator kept for backward compat
 function setSyncIndicator(on){
-  if(on) setSyncStatus('live');
-  else {
-    const ind=document.getElementById('sync-indicator');
-    if(ind) ind.style.display='none';
+  // Always keep indicator visible so owner can click to activate cloud
+  if(on){
+    setSyncStatus('live');
+  } else {
+    setSyncStatus('offline');
   }
 }
 
@@ -2486,11 +2601,15 @@ function syncNow(){
     return;
   }
   if(!_cloudMode){
-    // Coba reconnect dulu
-    toast('Mencoba menghubungkan ke Firebase…');
-    _connectOwnerToFirebase().then(()=>{
-      if(_cloudMode) setTimeout(syncNow, 1500);
-    });
+    // Not connected - show cloud login modal for owner, or reconnect for staff
+    if(_currentUser?.role === 'owner'){
+      _showOwnerCloudModal(true);
+    } else {
+      toast('Menghubungkan ke Firebase…');
+      _connectOwnerToFirebase().then(()=>{
+        if(_cloudMode) setTimeout(syncNow, 1500);
+      });
+    }
     return;
   }
   if(!_fbAuth?.currentUser){
@@ -2900,6 +3019,23 @@ function renderPengaturan(){
     const c=getOwnerCreds();
     const el=document.getElementById('oc-cur-id');
     if(el) el.textContent=c.id;
+    // Update cloud status indicator in settings
+    const cloudEl = document.getElementById('oc-cloud-status');
+    if(cloudEl){
+      if(_cloudMode && _fbAuth?.currentUser){
+        cloudEl.innerHTML = '<span style="color:var(--green)">&#9679; Cloud Aktif</span> &mdash; ' + (_fbAuth.currentUser.email||'');
+        const logoutBtn = document.getElementById('oc-cloud-logout-btn');
+        if(logoutBtn) logoutBtn.style.display='inline-flex';
+        const connectBtn = document.getElementById('oc-cloud-connect-btn');
+        if(connectBtn) connectBtn.style.display='none';
+      } else {
+        cloudEl.innerHTML = '<span style="color:var(--text3)">&#9679; Mode Lokal</span>';
+        const logoutBtn = document.getElementById('oc-cloud-logout-btn');
+        if(logoutBtn) logoutBtn.style.display='none';
+        const connectBtn = document.getElementById('oc-cloud-connect-btn');
+        if(connectBtn) connectBtn.style.display='inline-flex';
+      }
+    }
     ['oc-new-id','oc-old-pw','oc-new-pw','oc-new-pw2'].forEach(id=>{
       const el=document.getElementById(id); if(el) el.value='';
     });
@@ -5318,6 +5454,50 @@ ${perMob.length>0?`
   </div>
 </div>
 
+
+
+<!-- ── OWNER CLOUD LOGIN MODAL ── -->
+<div class="modal" id="md-owner-cloud">
+  <div class="modal-box" style="max-width:420px">
+    <div class="modal-head">
+      <span class="modal-title">Hubungkan ke Firebase Cloud</span>
+      <button class="modal-close" onclick="doOwnerCloudSkip()">&#x2715;</button>
+    </div>
+    <div style="padding:20px 22px">
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:18px;font-size:12.5px;color:var(--text2);line-height:1.6">
+        <div style="font-weight:600;color:var(--text);margin-bottom:6px">&#128274; Kenapa perlu login Firebase?</div>
+        Mode cloud memungkinkan data sinkron antar perangkat secara realtime.
+        Gunakan <strong>email &amp; password Firebase</strong> akun Owner yang sudah dibuat di Firebase Console.
+        Password lokal Owner berbeda dari password Firebase.
+      </div>
+      <div style="margin-bottom:14px">
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Email Firebase</label>
+        <input id="oc-email" class="fi" type="email" placeholder="contoh@gmail.com" autocomplete="email">
+      </div>
+      <div style="margin-bottom:16px">
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Password Firebase</label>
+        <div style="position:relative">
+          <input id="oc-cloud-pass" class="fi" type="password" placeholder="Password Firebase kamu" autocomplete="current-password" style="padding-right:44px">
+          <button onclick="togglePwVis('oc-cloud-pass',this)" type="button"
+            style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;padding:4px">&#128065;</button>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:18px">
+        <input type="checkbox" id="oc-remember" checked style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer">
+        <label for="oc-remember" style="font-size:13px;color:var(--text2);cursor:pointer">Simpan email untuk login berikutnya</label>
+      </div>
+      <div id="oc-cloud-err" style="display:none;font-size:12px;color:var(--red);margin-bottom:14px;padding:10px 12px;background:rgba(220,50,50,.1);border-radius:8px;line-height:1.5"></div>
+      <button id="oc-login-btn" class="btn btn-p" style="width:100%;margin-bottom:10px" onclick="doOwnerCloudLogin()">Hubungkan ke Cloud</button>
+      <button id="oc-skip-btn" class="btn" style="width:100%;color:var(--text3)" onclick="doOwnerCloudSkip()">Lewati &mdash; Gunakan Mode Lokal</button>
+      <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border);font-size:12px;color:var(--text3);line-height:1.6">
+        <strong style="color:var(--text2)">Belum punya akun Firebase Owner?</strong><br>
+        Buka Firebase Console &rarr; Authentication &rarr; Users &rarr; Add User.<br>
+        Lalu tambahkan UID ke database: <code style="background:var(--surface2);padding:2px 5px;border-radius:4px">karenta/users/{uid}</code>
+        dengan field <code style="background:var(--surface2);padding:2px 5px;border-radius:4px">role: "owner"</code>
+      </div>
+    </div>
+  </div>
+</div>
 </body>
 </html>`;
 
