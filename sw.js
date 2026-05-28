@@ -4,6 +4,13 @@
  * Cache versioning: bump CACHE_VERSION setiap deploy baru
  */
 
+// ── SELF-UNREGISTER jika SW ini ternyata dimuat dari blob URL ──
+// Ini terjadi kalau versi lama masih aktif di cache browser
+if (self.location.protocol === 'blob:') {
+  console.warn('[SW] Detected blob: URL — unregistering self immediately');
+  self.registration.unregister();
+}
+
 const CACHE_VERSION = 'v3';
 const CACHE_STATIC  = `karenta-static-${CACHE_VERSION}`;
 const CACHE_FONTS   = `karenta-fonts-${CACHE_VERSION}`;
@@ -12,9 +19,12 @@ const CACHE_FONTS   = `karenta-fonts-${CACHE_VERSION}`;
 const MAX_CACHE_SIZE = 50 * 1024 * 1024;
 
 // URL yang harus di-cache saat install
+// Mendukung GitHub Pages subfolder (/karenta/) maupun root (/)
+const SCOPE = self.registration.scope; // e.g. https://zxirt.github.io/karenta/
 const PRECACHE_URLS = [
-  './',
-  './index.html',
+  SCOPE,
+  SCOPE + 'index.html',
+  SCOPE + 'manifest.json',
 ];
 
 // Pattern URL yang tidak boleh di-cache
@@ -23,6 +33,7 @@ const SKIP_CACHE_PATTERNS = [
   /googleapis\.com\/identitytoolkit/,
   /securetoken\.googleapis\.com/,
   /chrome-extension:\/\//,
+  /\.map$/, // source maps — jangan di-cache, biarkan browser handle
 ];
 
 // Pattern CDN yang bisa di-cache (font, library statis)
