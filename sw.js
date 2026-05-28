@@ -11,7 +11,7 @@ if (self.location.protocol === 'blob:') {
   self.registration.unregister();
 }
 
-const CACHE_VERSION = 'v3';
+const CACHE_VERSION = 'v4';
 const CACHE_STATIC  = `karenta-static-${CACHE_VERSION}`;
 const CACHE_FONTS   = `karenta-fonts-${CACHE_VERSION}`;
 
