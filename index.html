@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self' https://zxirt.github.io; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://www.gstatic.com https://zxirt.github.io; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://*.firebasedatabase.app https://*.googleapis.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com https://www.gstatic.com https://zxirt.github.io; img-src 'self' data: blob: https://zxirt.github.io; worker-src 'self' blob: https://zxirt.github.io; manifest-src 'self' blob: https://zxirt.github.io;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' https://zxirt.github.io; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://www.gstatic.com https://zxirt.github.io; script-src-elem 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://www.gstatic.com https://zxirt.github.io; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://*.firebasedatabase.app https://*.googleapis.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com https://www.gstatic.com https://zxirt.github.io; img-src 'self' data: blob: https://zxirt.github.io; worker-src 'self' blob: https://zxirt.github.io; manifest-src 'self' blob: https://zxirt.github.io;">
 <title>Karenta Auto Serasi</title>
 <meta name="theme-color" content="#f0a500">
 <meta name="mobile-web-app-capable" content="yes">
@@ -1957,16 +1957,35 @@ const mfst = {
     {src:icon512, sizes:'512x512', type:'image/png', purpose:'maskable'},
   ]
 };
-// FIXED: Manifest sekarang di-serve sebagai file statis /manifest.json
-// Blob URL manifest menyebabkan error 'start_url/scope invalid' di browser
-// Lihat: <link rel=manifest href=/manifest.json> di <head>
+// ── Inject manifest dengan icons via blob URL ──
+// Gunakan _logoImg.onload agar drawImage reliable untuk semua browser
+function _injectManifestWithIcons(){
+  const mfstWithIcons = Object.assign({}, mfst, {
+    icons: [
+      {src: icon192, sizes:'192x192', type:'image/png', purpose:'any maskable'},
+      {src: icon512, sizes:'512x512', type:'image/png', purpose:'any maskable'},
+    ]
+  });
+  const blob = new Blob([JSON.stringify(mfstWithIcons)], {type:'application/json'});
+  const url  = URL.createObjectURL(blob);
+  const link = document.querySelector('link[rel="manifest"]');
+  if(link) link.href = url;
+}
 
-// Set favicon dan apple-touch-icon ke logo asli
+// Set favicon dan apple-touch-icon ke logo asli, lalu inject manifest
 (function(){
   const ati = document.getElementById('ati-link');
   const fav = document.getElementById('favicon-link');
   if(ati) ati.href = LOGO_SRC;
   if(fav) fav.href = LOGO_SRC;
+
+  // Jika image sudah decode (data URI biasanya langsung complete)
+  if(_logoImg.complete && _logoImg.naturalWidth > 0){
+    _injectManifestWithIcons();
+  } else {
+    _logoImg.onload  = _injectManifestWithIcons;
+    _logoImg.onerror = _injectManifestWithIcons; // inject meski tanpa icon
+  }
 })();
 
 // ── Service Worker (improved caching) ──

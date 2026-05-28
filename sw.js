@@ -201,9 +201,11 @@ async function enforceCacheSize(cache, maxBytes) {
 // ── MESSAGE HANDLER (dari app: paksa update) ──
 self.addEventListener('message', event => {
   if (event.data?.type === 'SKIP_WAITING') {
-    self.skipWaiting();
+    event.waitUntil(self.skipWaiting());
   }
   if (event.data?.type === 'CLEAR_CACHE') {
-    caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k))));
+    event.waitUntil(
+      caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k))))
+    );
   }
 });
