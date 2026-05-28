@@ -3,14 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self' https://zxirt.github.io; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://www.gstatic.com https://*.gstatic.com https://*.googleapis.com https://apis.google.com https://zxirt.github.io; script-src-elem 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://www.gstatic.com https://*.gstatic.com https://*.googleapis.com https://apis.google.com https://zxirt.github.io; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; font-src 'self' https://fonts.gstatic.com https://*.gstatic.com; connect-src 'self' https://*.firebasedatabase.app https://*.googleapis.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com https://www.gstatic.com https://*.gstatic.com https://apis.google.com https://zxirt.github.io wss://*.firebasedatabase.app; img-src 'self' data: blob: https://zxirt.github.io; worker-src 'self' blob: https://zxirt.github.io; manifest-src 'self' blob: https://zxirt.github.io;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://www.gstatic.com/firebasejs/; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://*.firebasedatabase.app https://*.googleapis.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com; img-src 'self' data: blob:; worker-src 'self'; manifest-src 'self' blob:;">
 <title>Karenta Auto Serasi</title>
 <meta name="theme-color" content="#f0a500">
-<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Karenta">
-<link rel="manifest" href="./manifest.json">
+<link rel="manifest" id="manifest-link">
 <link rel="apple-touch-icon" id="ati-link">
 <link rel="icon" type="image/png" id="favicon-link">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -1957,75 +1956,37 @@ const mfst = {
     {src:icon512, sizes:'512x512', type:'image/png', purpose:'maskable'},
   ]
 };
-// ── Inject manifest dengan icons via blob URL ──
-// Gunakan _logoImg.onload agar drawImage reliable untuk semua browser
-function _injectManifestWithIcons(){
-  const mfstWithIcons = Object.assign({}, mfst, {
-    icons: [
-      {src: icon192, sizes:'192x192', type:'image/png', purpose:'any maskable'},
-      {src: icon512, sizes:'512x512', type:'image/png', purpose:'any maskable'},
-    ]
-  });
-  const blob = new Blob([JSON.stringify(mfstWithIcons)], {type:'application/json'});
-  const url  = URL.createObjectURL(blob);
-  const link = document.querySelector('link[rel="manifest"]');
-  if(link) link.href = url;
-}
+const mblob = new Blob([JSON.stringify(mfst)],{type:'application/json'});
+document.getElementById('manifest-link').href = URL.createObjectURL(mblob);
 
-// Set favicon dan apple-touch-icon ke logo asli, lalu inject manifest
+// Set favicon dan apple-touch-icon ke logo asli
 (function(){
   const ati = document.getElementById('ati-link');
   const fav = document.getElementById('favicon-link');
   if(ati) ati.href = LOGO_SRC;
   if(fav) fav.href = LOGO_SRC;
-
-  // Jika image sudah decode (data URI biasanya langsung complete)
-  if(_logoImg.complete && _logoImg.naturalWidth > 0){
-    _injectManifestWithIcons();
-  } else {
-    _logoImg.onload  = _injectManifestWithIcons;
-    _logoImg.onerror = _injectManifestWithIcons; // inject meski tanpa icon
-  }
 })();
 
-// ── Service Worker ──
+// ── Service Worker (improved caching) ──
 if('serviceWorker' in navigator){
-  // Langkah 1: unregister SW lama (blob/stale), bersihkan cache lama, register baru
-  navigator.serviceWorker.getRegistrations().then(async regs => {
-    for(const reg of regs){
-      const scriptURL = reg.active?.scriptURL || reg.installing?.scriptURL || '';
-      if(scriptURL.startsWith('blob:') || (!scriptURL.includes('sw.js') && scriptURL !== '')){
-        console.log('[SW] Unregistering stale SW:', scriptURL);
-        await reg.unregister();
-      }
-    }
-    // Langkah 2: hapus semua cache versi lama
-    const CURRENT_CACHES = ['karenta-static-v5', 'karenta-fonts-v5'];
-    const allKeys = await caches.keys();
-    await Promise.all(
-      allKeys
-        .filter(k => !CURRENT_CACHES.includes(k))
-        .map(k => { console.log('[SW] Force-clearing old cache:', k); return caches.delete(k); })
-    );
-    // Langkah 3: register SW baru
-    return navigator.serviceWorker.register('./sw.js', { scope: './' });
-  })
-  .then(reg => {
-    if(!reg) return;
-    console.log('[SW] Registered, scope:', reg.scope);
-    if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
-    setInterval(()=>reg.update(), 60*60*1000);
-    reg.addEventListener('updatefound', ()=>{
-      const newSW = reg.installing;
-      if(!newSW) return;
-      newSW.addEventListener('statechange', ()=>{
-        if(newSW.state==='installed'&&navigator.serviceWorker.controller){
-          _showSWUpdateBanner();
-        }
+  // PATCHED: SW registered from file (sw.js) - not blob URL
+  // Blob URL SW is not persistent, cannot be updated correctly, not reliable across browsers
+  // Place sw.js file in the same directory as index.html on your web server
+  navigator.serviceWorker.register('./sw.js', { scope: './' })
+    .then(reg=>{
+      console.log('[SW] Registered, scope:', reg.scope);
+      setInterval(()=>reg.update(), 60*60*1000); // check for updates hourly
+      reg.addEventListener('updatefound', ()=>{
+        const newSW = reg.installing;
+        if(!newSW) return;
+        newSW.addEventListener('statechange', ()=>{
+          if(newSW.state==='installed'&&navigator.serviceWorker.controller){
+            _showSWUpdateBanner();
+          }
+        });
       });
-    });
-  })
-  .catch(err=>console.warn('[SW] Registration failed (app still works):', err));
+    })
+    .catch(err=>console.warn('[SW] Registration failed (app still works offline via cache):', err));
 }
 
 function _showSWUpdateBanner(){
