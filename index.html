@@ -16,6 +16,11 @@
     https://www.gstatic.com
     https://cdnjs.cloudflare.com
     https://apis.google.com;
+  script-src-elem 'self' 'unsafe-inline'
+    https://www.gstatic.com
+    https://cdnjs.cloudflare.com
+    https://apis.google.com
+    blob:;
   style-src 'self' 'unsafe-inline'
     https://fonts.googleapis.com;
   font-src 'self'
@@ -28,15 +33,7 @@
     https://*.firebasedatabase.app
     wss://*.firebaseio.com
     wss://*.firebasedatabase.app
-    https://identitytoolkit.googleapis.com
-    https://securetoken.googleapis.com
-    https://www.googleapis.com
-    https://firebase.googleapis.com
-    https://firebaseinstallations.googleapis.com
-    https://firebaseremoteconfig.googleapis.com
-    https://fcmregistrations.googleapis.com
-    https://fonts.googleapis.com
-    https://fonts.gstatic.com
+    https://*.googleapis.com
     https://www.gstatic.com
     https://cdnjs.cloudflare.com;
   worker-src 'self' blob:;
@@ -3217,6 +3214,10 @@ async function appInit(){
     }
   }, 12000);
 
+  // SAFETY NET: wrap onAuthStateChanged registration so a synchronous
+  // Firebase SDK throw (e.g. SDK half-loaded due to CSP) doesn't silently
+  // prevent _hideLoader() from ever being called.
+  try {
   _fbAuth.onAuthStateChanged(async (fbUser) => {
     console.debug('[Auth] onAuthStateChanged fired. state=' + _authState + ' loginInProgress=' + _loginInProgress + ' fbUser=' + (fbUser ? fbUser.uid : 'null'));
 
@@ -3250,14 +3251,19 @@ async function appInit(){
     if(fbUser){
       console.debug('[Auth] Restoring session for UID:', fbUser.uid);
 
-      // Read role from DB (non-fatal if fails)
+      // Read role from DB — race against 8s timeout.
+      // CRITICAL FIX: without a timeout, a Firebase worker killed by CSP
+      // (broken MessageChannel) causes this promise to hang forever, which
+      // means _hideLoader() is never called and the splash screen never exits.
       let udata = {};
       try{
-        const snap = await _fbDb.ref('karenta/users/' + fbUser.uid).get();
+        const dbPromise = _fbDb.ref('karenta/users/' + fbUser.uid).get();
+        const toPromise = new Promise((_,rej)=>setTimeout(()=>rej(new Error('db-timeout')),8000));
+        const snap = await Promise.race([dbPromise, toPromise]);
         udata = snap.val() || {};
         console.debug('[Auth] DB role:', udata.role || '(not set)');
       } catch(e){
-        console.warn('[Auth] DB role read failed:', e.message);
+        console.warn('[Auth] DB role read failed ('+e.message+') — using default role');
       }
 
       _currentUser = {
@@ -3283,6 +3289,13 @@ async function appInit(){
 
     _hideLoader();
   });
+  } catch(initErr) {
+    // onAuthStateChanged registration failed — SDK likely not fully operational.
+    // Dismiss loader and show login so the user isn't stuck on splash screen.
+    console.error('[Auth] onAuthStateChanged registration failed:', initErr.message);
+    showLoginScreen();
+    _hideLoader();
+  }
 }
 
 document.addEventListener('DOMContentLoaded', appInit);
