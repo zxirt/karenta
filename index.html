@@ -2254,6 +2254,7 @@ function getFbConfig(){
 
 function initFirebase(cfg){
   if(typeof firebase === 'undefined') return false;
+  if(!cfg || !cfg.apiKey || !cfg.databaseURL) return false; // no config — safe no-op
   try{
     try{
       _fbApp = firebase.app('karenta');
@@ -2270,11 +2271,14 @@ function initFirebase(cfg){
 }
 
 function saveFirebaseConfig(){
-  // Ambil nilai dari form; jika kosong, fallback ke hardcoded
-  const apiKey     = (document.getElementById('fb-apiKey')?.value||'').trim()      || FIREBASE_CONFIG_HARDCODED.apiKey;
-  const authDomain = (document.getElementById('fb-authDomain')?.value||'').trim()  || FIREBASE_CONFIG_HARDCODED.authDomain;
-  const databaseURL= (document.getElementById('fb-dbUrl')?.value||'').trim()       || FIREBASE_CONFIG_HARDCODED.databaseURL;
-  const projectId  = (document.getElementById('fb-projectId')?.value||'').trim()   || FIREBASE_CONFIG_HARDCODED.projectId;
+  const apiKey     = (document.getElementById('fb-apiKey')?.value||'').trim();
+  const authDomain = (document.getElementById('fb-authDomain')?.value||'').trim();
+  const databaseURL= (document.getElementById('fb-dbUrl')?.value||'').trim();
+  const projectId  = (document.getElementById('fb-projectId')?.value||'').trim();
+  if(!apiKey || !databaseURL){
+    showFbStatus('apiKey dan databaseURL wajib diisi!','err');
+    return;
+  }
   const cfg = { apiKey, authDomain, databaseURL, projectId };
   localStorage.setItem(FB_CFG_KEY,JSON.stringify(cfg));
   if(initFirebase(cfg)){
@@ -2425,7 +2429,7 @@ async function doOwnerCloudLogin(){
   if(errEl){ errEl.style.display='none'; errEl.textContent=''; }
 
   try{
-    if(!_fbAuth) initFirebase(FIREBASE_CONFIG_HARDCODED);
+    if(!_fbAuth) initFirebase(getFbConfig());
     await _fbAuth.signInWithEmailAndPassword(email, pass);
 
     // Save email for next time (NOT password)
@@ -2849,7 +2853,7 @@ async function doLogin(){
       }
       return;
     }
-    if(!_fbAuth) initFirebase(FIREBASE_CONFIG_HARDCODED);
+    if(!_fbAuth) initFirebase(getFbConfig());
     if(!_fbAuth){
       showLoginErr('Koneksi Firebase gagal. Pastikan ada internet dan coba lagi.');
       return;
@@ -2929,7 +2933,7 @@ function _safeAuthListen(callback){
 // ── CHECK AUTH ON LOAD ──
 function checkAuth(){
   // 0. Init Firebase dari config hardcoded
-  if(!_fbApp) initFirebase(FIREBASE_CONFIG_HARDCODED);
+  if(!_fbApp) initFirebase(getFbConfig());
 
   // 1. Check saved session first
   const session = loadSession();
