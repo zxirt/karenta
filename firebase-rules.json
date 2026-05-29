@@ -1,0 +1,70 @@
+{
+  "rules": {
+    "karenta": {
+
+      "data": {
+        "$collection": {
+          ".read": "auth != null",
+          ".write": "auth != null && (
+            root.child('karenta/users').child(auth.uid).child('role').val() === 'owner' ||
+            root.child('karenta/users').child(auth.uid).child('role').val() === 'admin' ||
+            root.child('karenta/users').child(auth.uid).child('role').val() === 'karyawan'
+          )",
+          ".validate": "newData.isString() || newData.hasChildren()"
+        }
+      },
+
+      "users": {
+        ".read": "auth != null",
+        "$uid": {
+          ".read": "auth != null && (auth.uid === $uid || root.child('karenta/users').child(auth.uid).child('role').val() === 'owner' || root.child('karenta/users').child(auth.uid).child('role').val() === 'admin')",
+          ".write": "auth != null && (
+            root.child('karenta/users').child(auth.uid).child('role').val() === 'owner' ||
+            root.child('karenta/users').child(auth.uid).child('role').val() === 'admin'
+          )",
+          "role": {
+            ".write": "auth != null && root.child('karenta/users').child(auth.uid).child('role').val() === 'owner'",
+            ".validate": "newData.isString() && (newData.val() === 'owner' || newData.val() === 'admin' || newData.val() === 'karyawan')"
+          },
+          "email": {
+            ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length < 200"
+          },
+          "nama": {
+            ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length < 200"
+          }
+        }
+      },
+
+      "sync_meta": {
+        "$key": {
+          ".read": "auth != null",
+          ".write": "auth != null && (
+            $key === 'mobil' ||
+            $key === 'pelanggan' ||
+            $key === 'booking'
+          )",
+          ".validate": "newData.hasChildren(['at', 'by']) && newData.child('at').isNumber() && newData.child('by').isString() && newData.child('by').val().length < 100"
+        }
+      },
+
+      "backups": {
+        ".read": "auth != null && (root.child('karenta/users').child(auth.uid).child('role').val() === 'owner' || root.child('karenta/users').child(auth.uid).child('role').val() === 'admin')",
+        "$backupId": {
+          ".write": "auth != null && (root.child('karenta/users').child(auth.uid).child('role').val() === 'owner' || root.child('karenta/users').child(auth.uid).child('role').val() === 'admin')",
+          ".validate": "newData.hasChildren(['meta', 'mobil', 'pelanggan', 'booking'])"
+        }
+      },
+
+      "backup_meta": {
+        ".read": "auth != null",
+        ".write": "auth != null && (root.child('karenta/users').child(auth.uid).child('role').val() === 'owner' || root.child('karenta/users').child(auth.uid).child('role').val() === 'admin')"
+      },
+
+      "arsip_log": {
+        ".read": "auth != null",
+        ".write": "auth != null && (root.child('karenta/users').child(auth.uid).child('role').val() === 'owner' || root.child('karenta/users').child(auth.uid).child('role').val() === 'admin')"
+      }
+
+    }
+  }
+}
