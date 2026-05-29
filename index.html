@@ -3018,6 +3018,8 @@ function checkAuth(){
       applyRoleRestrictions();
       // Owner dengan saved session: sign in anonim agar bisa akses Firebase
       _connectOwnerToFirebase(); // tidak perlu await, async di background
+      // FIX: Owner lokal session sudah diketahui — resolve sekarang (cloud connect di background)
+      _onAuthResolved();
       return;
     }
 
@@ -3039,8 +3041,10 @@ function checkAuth(){
             clearSession();
             showLoginScreen();
           }
+          // FIX: Firebase auth state sudah diketahui, resolve sekarang
+          _onAuthResolved();
         });
-        return;
+        return; // Jangan resolve di sini — tunggu listener Firebase
       }
     }
     // No Firebase but has session — still auto-login
@@ -3049,6 +3053,8 @@ function checkAuth(){
     updateUserUI();
     applyRoleRestrictions();
     if(_cloudMode) startCloudSync(); // mulai sync kalau Firebase ada
+    // FIX: Tidak ada Firebase, resolve langsung
+    _onAuthResolved();
     return;
   }
 
@@ -3080,7 +3086,15 @@ function checkAuth(){
           startCloudSync();
         }catch{ showLoginScreen(); }
       }
+      // FIX: Firebase auth state sudah diketahui (ada user atau tidak), resolve sekarang
+      _onAuthResolved();
     });
+    // FIX: Safety timeout — jika Firebase tidak merespons dalam 4 detik,
+    // tetap jalankan app dalam mode lokal (mencegah blank screen selamanya)
+    setTimeout(()=>{ _onAuthResolved(); }, 4000);
+  } else {
+    // Tidak ada Firebase config sama sekali — resolve langsung dengan mode lokal
+    _onAuthResolved();
   }
 }
 function applyRoleRestrictions(){
@@ -6218,15 +6232,23 @@ function renderExport(){
 // ══════════════════════════════════════════════
 // INIT — runs after all scripts are loaded
 // ══════════════════════════════════════════════
+// Flag: true jika auth state sudah diketahui (lokal session ATAU Firebase auth state resolved)
+// Mencegah seed() + renderDash() berjalan sebelum Firebase auth state terkonfirmasi
+let _authResolved = false;
+
+// Dipanggil oleh checkAuth() setelah auth state diketahui
+function _onAuthResolved(){
+  if(_authResolved) return;
+  _authResolved = true;
+  if(!_cloudMode) seed();
+  renderDash();
+}
+
 async function appInit(){
   // PATCHED: Migrate old plaintext creds sebelum checkAuth, agar hash tersedia
   await _migrateOwnerCredentials();
 
   checkAuth();
-
-  // seed() hanya dijalankan jika offline — jika cloud mode, tunggu data dari Firebase
-  if(!_cloudMode) seed();
-  renderDash();
 
   // PATCHED: Tampilkan first-time setup HANYA jika belum ada kredensial Owner,
   // dan hanya setelah login screen sudah ditampilkan (delay kecil untuk render).
