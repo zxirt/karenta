@@ -1495,9 +1495,30 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
               Config disimpan di perangkat ini saja dan tidak dikirim ke mana pun.
             </div>
             <div id="fb-status" style="display:none;padding:10px 14px;border-radius:var(--rs);font-size:13px;margin-bottom:14px"></div>
-            <!-- Hidden inputs to prevent JS errors if referenced -->
-            <input type="hidden" id="fb-apiKey"><input type="hidden" id="fb-authDomain">
-            <input type="hidden" id="fb-dbUrl"><input type="hidden" id="fb-projectId"><input type="hidden" id="fb-appId">
+            <div class="fg" style="margin-bottom:10px">
+              <label class="fl">API Key <span style="color:var(--red)">*</span></label>
+              <input class="fi" type="text" id="fb-apiKey" placeholder="AIzaSy..." autocomplete="off">
+            </div>
+            <div class="fg" style="margin-bottom:10px">
+              <label class="fl">Database URL <span style="color:var(--red)">*</span></label>
+              <input class="fi" type="text" id="fb-dbUrl" placeholder="https://project-id-default-rtdb.firebaseio.com" autocomplete="off">
+            </div>
+            <div class="fg" style="margin-bottom:10px">
+              <label class="fl">Auth Domain</label>
+              <input class="fi" type="text" id="fb-authDomain" placeholder="project-id.firebaseapp.com" autocomplete="off">
+            </div>
+            <div class="fg" style="margin-bottom:10px">
+              <label class="fl">Project ID</label>
+              <input class="fi" type="text" id="fb-projectId" placeholder="project-id" autocomplete="off">
+            </div>
+            <div class="fg" style="margin-bottom:16px">
+              <label class="fl">App ID</label>
+              <input class="fi" type="text" id="fb-appId" placeholder="1:123456789:web:abc123" autocomplete="off">
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn btn-s btn-sm" onclick="pasteFirebaseJSON()">📋 Paste JSON Config</button>
+              <button class="btn btn-p btn-sm" onclick="saveFirebaseConfig()">☁️ Sambungkan Firebase</button>
+            </div>
           </div>
 
           <!-- Paste JSON helper -->
