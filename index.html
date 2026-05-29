@@ -9,6 +9,41 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Karenta">
 <meta name="description" content="Aplikasi Manajemen Rental Mobil — Karenta Auto Serasi">
+<!-- CSP: Allow Firebase SDK (gstatic), fonts, xlsx, and inline scripts/styles needed for PWA -->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'self';
+  script-src 'self' 'unsafe-inline'
+    https://www.gstatic.com
+    https://cdnjs.cloudflare.com
+    https://apis.google.com;
+  style-src 'self' 'unsafe-inline'
+    https://fonts.googleapis.com;
+  font-src 'self'
+    https://fonts.gstatic.com
+    data:;
+  img-src 'self' data: blob:
+    https://firebasestorage.googleapis.com;
+  connect-src 'self'
+    https://*.firebaseio.com
+    https://*.firebasedatabase.app
+    wss://*.firebaseio.com
+    wss://*.firebasedatabase.app
+    https://identitytoolkit.googleapis.com
+    https://securetoken.googleapis.com
+    https://www.googleapis.com
+    https://firebase.googleapis.com
+    https://firebaseinstallations.googleapis.com
+    https://firebaseremoteconfig.googleapis.com
+    https://fcmregistrations.googleapis.com
+    https://fonts.googleapis.com
+    https://fonts.gstatic.com
+    https://cdnjs.cloudflare.com;
+  worker-src 'self' blob:;
+  manifest-src 'self';
+  frame-src 'none';
+  object-src 'none';
+  base-uri 'self';
+">
 <title>Karenta Auto Serasi</title>
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.png">
@@ -1330,14 +1365,30 @@ async function hashPw(pw){
 // FIREBASE INIT & CLOUD SYNC
 // ═══════════════════════════════════════
 function initFirebase(){
-  if(typeof firebase==='undefined') return false;
+  if(typeof firebase === 'undefined'){
+    console.warn('[Karenta] Firebase SDK not loaded — offline mode only');
+    return false;
+  }
   try{
+    // Reuse existing named app if already initialized
     try{ _fbApp = firebase.app('karenta'); }
-    catch{ _fbApp = firebase.initializeApp(FIREBASE_CONFIG,'karenta'); }
+    catch{ _fbApp = firebase.initializeApp(FIREBASE_CONFIG, 'karenta'); }
+
+    // Auth with LOCAL persistence so session survives page refresh
     _fbAuth = _fbApp.auth();
-    _fbDb   = _fbApp.database();
+    _fbAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(()=>{
+      console.warn('[Karenta] Could not set auth persistence');
+    });
+
+    // Realtime Database
+    _fbDb = _fbApp.database();
+
     return true;
-  } catch(e){ console.error('Firebase init:',e); return false; }
+  } catch(e){
+    console.error('[Karenta] Firebase init failed:', e.message);
+    _fbApp = null; _fbAuth = null; _fbDb = null;
+    return false;
+  }
 }
 
 async function _fbWriteDb(k, arr){
@@ -1361,37 +1412,56 @@ async function _fbWriteDb(k, arr){
 
 function startCloudSync(){
   if(!_fbDb) return;
-  stopCloudSync();
+  stopCloudSync(); // Always stop existing listeners first
+
+  // Connection state monitor
   _connRef_cb = snap=>{
-    const online = snap.val()===true;
+    const online = snap.val() === true;
     setSyncStatus(online ? 'live' : 'reconnecting');
     if(online){
+      // On reconnect, push any local data that Firebase doesn't have yet
       _fbDb.ref('karenta/data').get().then(ds=>{
-        if(!ds.exists()||!ds.val()){
+        if(!ds.exists() || !ds.val()){
           ['mobil','pelanggan','booking'].forEach(k=>{
-            const local=DB.get(k); if(local.length) _fbDb.ref('karenta/data/'+k).set(local).catch(()=>{});
+            const local = DB.get(k);
+            if(local.length){
+              _fbDb.ref('karenta/data/'+k).set(local).catch(()=>{});
+            }
           });
         }
       }).catch(()=>{});
     }
   };
   _fbDb.ref('.info/connected').on('value', _connRef_cb);
+
+  // Realtime data listeners for each collection
   ['mobil','pelanggan','booking'].forEach(k=>{
     _data_cb[k] = snap=>{
       const val = snap.val();
-      if(val===null||val===undefined){ if(!DB.get(k).length && k==='mobil') seedData(); return; }
-      const arr = Array.isArray(val)?val:Object.values(val).filter(Boolean);
-      localStorage.setItem('k_'+k, JSON.stringify(arr));
-      const isOwn = _localWriteTs[k] && (Date.now()-_localWriteTs[k]<2500);
-      if(isOwn) return;
-      clearTimeout(_renderTimers[k]);
-      _renderTimers[k] = setTimeout(()=>{
-        const sec = document.querySelector('.sec.active')?.id?.replace('sec-','');
-        if(sec) ({dashboard:renderDash,booking:renderBooking,mobil:renderMobil,pelanggan:renderPel,laporan:renderLap,kalender:renderKal})[sec]?.();
-      }, 400);
+      if(val === null || val === undefined){
+        if(!DB.get(k).length && k === 'mobil') seedData();
+        return;
+      }
+      const arr = Array.isArray(val) ? val : Object.values(val).filter(Boolean);
+      // Only write to localStorage if this isn't from our own recent write
+      const isOwnWrite = _localWriteTs[k] && (Date.now() - _localWriteTs[k] < 2500);
+      if(!isOwnWrite){
+        localStorage.setItem('k_'+k, JSON.stringify(arr));
+        // Re-render the current section if it shows this data
+        clearTimeout(_renderTimers[k]);
+        _renderTimers[k] = setTimeout(()=>{
+          if(_loginInProgress) return; // Don't render during login
+          const sec = document.querySelector('.sec.active')?.id?.replace('sec-','');
+          if(sec){
+            const map = {dashboard:renderDash,booking:renderBooking,mobil:renderMobil,pelanggan:renderPel,laporan:renderLap,kalender:renderKal};
+            map[sec]?.();
+          }
+        }, 400);
+      }
     };
     _fbDb.ref('karenta/data/'+k).on('value', _data_cb[k]);
   });
+
   setSyncStatus('reconnecting');
 }
 
@@ -1438,43 +1508,113 @@ function hideLoginScreen(){
   document.getElementById('app-layout').style.display='flex';
 }
 
+// Flag to prevent onAuthStateChanged from handling a login in progress
+let _loginInProgress = false;
+
 async function doLogin(){
   const email = document.getElementById('l-email').value.trim();
   const pass  = document.getElementById('l-pass').value;
   const errEl = document.getElementById('login-err');
   const btn   = document.getElementById('l-btn');
+
   errEl.style.display='none';
-  if(!email||!pass){ errEl.textContent='Email dan password wajib diisi'; errEl.style.display='block'; return; }
+  if(!email||!pass){
+    errEl.textContent='Email dan password wajib diisi';
+    errEl.style.display='block';
+    return;
+  }
+
   btn.textContent='Masuk…'; btn.disabled=true;
-  try{
-    if(!_fbAuth) throw new Error('no-fb');
-    const cred = await _fbAuth.signInWithEmailAndPassword(email, pass);
-    const fbUser = cred.user;
-    const snap = await _fbDb.ref('karenta/users/'+fbUser.uid).get();
-    const udata = snap.val()||{};
-    _currentUser = { uid:fbUser.uid, email:fbUser.email, nama:udata.nama||fbUser.email.split('@')[0], role:udata.role||'karyawan' };
-    _cloudMode = true;
-    saveSession();
-    hideLoginScreen(); updateUserUI(); applyRoleRestrictions(); startCloudSync();
-    toast('Selamat datang, '+_currentUser.nama+'!');
-    renderDash();
-  } catch(e){
-    // Try owner local auth if Firebase fails
-    if(e.message==='no-fb' || e.code==='auth/network-request-failed'){
-      await tryOwnerLocalLogin(email, pass);
-    } else {
-      const msgs = {
-        'auth/user-not-found':'Akun tidak ditemukan.',
-        'auth/wrong-password':'Password salah.',
-        'auth/invalid-email':'Format email tidak valid.',
-        'auth/invalid-credential':'Email atau password salah.',
-        'auth/too-many-requests':'Terlalu banyak percobaan. Tunggu sebentar.',
-        'auth/network-request-failed':'Tidak ada koneksi internet.'
-      };
-      errEl.textContent = msgs[e.code] || 'Login gagal: '+e.message;
+  _loginInProgress = true;
+
+  // Timeout guard — if Firebase hangs > 15s, unblock the button
+  const loginTimeout = setTimeout(()=>{
+    if(_loginInProgress){
+      _loginInProgress = false;
+      btn.textContent='Masuk'; btn.disabled=false;
+      errEl.textContent='Login timeout. Periksa koneksi internet Anda.';
       errEl.style.display='block';
     }
-  } finally{ btn.textContent='Masuk'; btn.disabled=false; }
+  }, 15000);
+
+  try{
+    // Check Firebase is ready
+    if(!_fbAuth || !_fbDb){
+      clearTimeout(loginTimeout);
+      _loginInProgress = false;
+      await tryOwnerLocalLogin(email, pass);
+      btn.textContent='Masuk'; btn.disabled=false;
+      return;
+    }
+
+    // Step 1: Firebase Auth sign-in
+    let fbUser;
+    try{
+      const cred = await _fbAuth.signInWithEmailAndPassword(email, pass);
+      fbUser = cred.user;
+    } catch(authErr){
+      clearTimeout(loginTimeout);
+      _loginInProgress = false;
+      btn.textContent='Masuk'; btn.disabled=false;
+
+      // Network error → try local owner login
+      if(authErr.code==='auth/network-request-failed'){
+        await tryOwnerLocalLogin(email, pass);
+        return;
+      }
+      const msgs = {
+        'auth/user-not-found'    :'Akun tidak ditemukan.',
+        'auth/wrong-password'    :'Password salah.',
+        'auth/invalid-email'     :'Format email tidak valid.',
+        'auth/invalid-credential':'Email atau password salah.',
+        'auth/too-many-requests' :'Terlalu banyak percobaan. Tunggu sebentar.',
+        'auth/user-disabled'     :'Akun dinonaktifkan oleh admin.',
+      };
+      errEl.textContent = msgs[authErr.code] || 'Login gagal: '+authErr.message;
+      errEl.style.display='block';
+      return;
+    }
+
+    // Step 2: Fetch user role from Realtime DB (with timeout)
+    let udata = {};
+    try{
+      const dbPromise = _fbDb.ref('karenta/users/'+fbUser.uid).get();
+      const timeoutPromise = new Promise((_,reject)=>setTimeout(()=>reject(new Error('db-timeout')),8000));
+      const snap = await Promise.race([dbPromise, timeoutPromise]);
+      udata = snap.val() || {};
+    } catch(dbErr){
+      // DB read failed or timed out — still log in with default role
+      console.warn('[Karenta] DB role lookup failed, using default role:', dbErr.message);
+      udata = {};
+    }
+
+    // Step 3: Build user object and proceed
+    _currentUser = {
+      uid  : fbUser.uid,
+      email: fbUser.email,
+      nama : udata.nama || fbUser.displayName || fbUser.email.split('@')[0],
+      role : udata.role || 'karyawan',
+    };
+    _cloudMode = true;
+    clearTimeout(loginTimeout);
+    _loginInProgress = false;
+
+    saveSession();
+    hideLoginScreen();
+    updateUserUI();
+    applyRoleRestrictions();
+    startCloudSync();
+    toast('Selamat datang, '+_currentUser.nama+'! 👋');
+    nav('dashboard');
+
+  } catch(e){
+    clearTimeout(loginTimeout);
+    _loginInProgress = false;
+    btn.textContent='Masuk'; btn.disabled=false;
+    errEl.textContent = 'Terjadi kesalahan: '+(e.message||'coba lagi');
+    errEl.style.display='block';
+    console.error('[Karenta] doLogin error:', e);
+  }
 }
 
 async function tryOwnerLocalLogin(email, pass){
@@ -2896,15 +3036,38 @@ function dismissInstall(){ document.getElementById('install-banner').classList.r
 window.addEventListener('appinstalled',()=>{ toast('Karenta telah diinstall!'); document.getElementById('install-banner').classList.remove('show'); });
 
 // ── SERVICE WORKER ──
+// Register SW only after page is fully loaded to avoid message channel issues
 if('serviceWorker' in navigator){
-  window.addEventListener('load',()=>{
-    navigator.serviceWorker.register('./service-worker.js').then(reg=>{
-      console.log('[SW] Registered');
-      reg.addEventListener('updatefound',()=>{
-        const nw=reg.installing;
-        nw.addEventListener('statechange',()=>{ if(nw.state==='installed'&&navigator.serviceWorker.controller) toast('Update tersedia! Muat ulang untuk update.','info'); });
-      });
-    }).catch(e=>console.warn('[SW] Register failed:',e));
+  // Use 'load' event to register AFTER all resources are fetched
+  window.addEventListener('load', ()=>{
+    // Small delay prevents "message channel closed" race condition
+    setTimeout(()=>{
+      navigator.serviceWorker.register('./service-worker.js', { scope: './' })
+        .then(reg=>{
+          // SW registered successfully — check for updates silently
+          reg.addEventListener('updatefound', ()=>{
+            const newWorker = reg.installing;
+            if(!newWorker) return;
+            newWorker.addEventListener('statechange', ()=>{
+              if(newWorker.state === 'installed' && navigator.serviceWorker.controller){
+                // New version available — show non-blocking toast
+                setTimeout(()=>toast('Update tersedia! Muat ulang untuk versi terbaru.','info', 6000), 1000);
+              }
+            });
+          });
+        })
+        .catch(err=>{
+          // SW registration failure is non-critical — app still works
+          console.warn('[SW] Registration failed (non-critical):', err.message);
+        });
+    }, 1000);
+  });
+
+  // Handle messages from SW without causing "message channel closed" errors
+  navigator.serviceWorker.addEventListener('message', event=>{
+    if(event.data && event.data.type === 'SW_UPDATE'){
+      toast('Update tersedia! Muat ulang untuk versi terbaru.','info', 6000);
+    }
   });
 }
 
@@ -2915,86 +3078,123 @@ window.addEventListener('online',()=>{ document.getElementById('offline-bar').cl
 // ═══════════════════════════════════════
 // APP INIT
 // ═══════════════════════════════════════
+function _hideLoader(){
+  const loader = document.getElementById('app-loader');
+  if(!loader) return;
+  loader.classList.add('hidden');
+  setTimeout(()=>{ if(loader.parentNode) loader.remove(); }, 600);
+}
+
 async function appInit(){
   applyTheme();
-  updateClock(); setInterval(updateClock,1000);
+  updateClock(); setInterval(updateClock, 1000);
 
-  // Keyboard: Enter on login
-  document.getElementById('l-pass').addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); });
-  document.getElementById('l-email').addEventListener('keydown',e=>{ if(e.key==='Enter') document.getElementById('l-pass').focus(); });
+  // Keyboard shortcuts for login form
+  const lPass = document.getElementById('l-pass');
+  const lEmail = document.getElementById('l-email');
+  if(lPass) lPass.addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); });
+  if(lEmail) lEmail.addEventListener('keydown', e=>{ if(e.key==='Enter') lPass?.focus(); });
 
-  // Export preview update
-  document.getElementById('exp-from').addEventListener('change', updateExportPreview);
-  document.getElementById('exp-to').addEventListener('change', updateExportPreview);
+  // Export preview listeners
+  const expFrom = document.getElementById('exp-from');
+  const expTo   = document.getElementById('exp-to');
+  if(expFrom) expFrom.addEventListener('change', updateExportPreview);
+  if(expTo)   expTo.addEventListener('change', updateExportPreview);
 
-  // Seed data if empty
+  // Seed demo data on first run
   seedData();
 
-  // Init Firebase
-  initFirebase();
+  // Init Firebase SDK
+  const fbReady = initFirebase();
 
-  // Check for existing session
-  const sess=loadSession();
-  if(sess){
-    _currentUser=sess;
-    // Try to restore Firebase auth
-    if(_fbAuth){
-      // Use auth state listener
-      _fbAuth.onAuthStateChanged(async fbUser=>{
-        if(fbUser){
-          try{
-            const snap=await _fbDb.ref('karenta/users/'+fbUser.uid).get();
-            const udata=snap.val()||{};
-            _currentUser={ uid:fbUser.uid, email:fbUser.email, nama:udata.nama||fbUser.email.split('@')[0], role:udata.role||'karyawan' };
-            _cloudMode=true; saveSession();
-          } catch{}
-          hideLoginScreen(); updateUserUI(); applyRoleRestrictions(); startCloudSync();
-          nav('dashboard');
-        } else if(sess.uid==='local-owner'){
-          // Offline session still valid
-          _cloudMode=false; hideLoginScreen(); updateUserUI(); applyRoleRestrictions();
-          nav('dashboard');
-        } else {
-          // Session expired, clear and show login
-          clearSession(); showLoginScreen();
-        }
-        document.getElementById('app-loader').classList.add('hidden');
-        setTimeout(()=>document.getElementById('app-loader').remove(),600);
-      });
-    } else if(sess.uid==='local-owner'){
-      _cloudMode=false; hideLoginScreen(); updateUserUI(); applyRoleRestrictions();
+  // ── RESTORE SESSION ──
+  const sess = loadSession();
+
+  if(sess && sess.uid === 'local-owner'){
+    // Offline owner session — restore immediately, no Firebase needed
+    _currentUser = sess;
+    _cloudMode   = false;
+    hideLoginScreen();
+    updateUserUI();
+    applyRoleRestrictions();
+    nav('dashboard');
+    _hideLoader();
+    return;
+  }
+
+  if(!fbReady || !_fbAuth){
+    // Firebase SDK failed to load (e.g. network blocked CDN)
+    if(sess){
+      // Restore last session with whatever data we have locally
+      _currentUser = sess;
+      _cloudMode   = false;
+      hideLoginScreen();
+      updateUserUI();
+      applyRoleRestrictions();
       nav('dashboard');
-      document.getElementById('app-loader').classList.add('hidden');
-      setTimeout(()=>document.getElementById('app-loader').remove(),600);
-    } else {
-      clearSession(); showLoginScreen();
-      document.getElementById('app-loader').classList.add('hidden');
-      setTimeout(()=>document.getElementById('app-loader').remove(),600);
-    }
-  } else {
-    if(_fbAuth){
-      _fbAuth.onAuthStateChanged(async fbUser=>{
-        if(fbUser){
-          try{
-            const snap=await _fbDb.ref('karenta/users/'+fbUser.uid).get();
-            const udata=snap.val()||{};
-            _currentUser={ uid:fbUser.uid, email:fbUser.email, nama:udata.nama||fbUser.email.split('@')[0], role:udata.role||'karyawan' };
-            _cloudMode=true; saveSession();
-            hideLoginScreen(); updateUserUI(); applyRoleRestrictions(); startCloudSync();
-            nav('dashboard');
-          } catch{ showLoginScreen(); }
-        } else {
-          showLoginScreen();
-        }
-        document.getElementById('app-loader').classList.add('hidden');
-        setTimeout(()=>document.getElementById('app-loader').remove(),600);
-      });
     } else {
       showLoginScreen();
-      document.getElementById('app-loader').classList.add('hidden');
-      setTimeout(()=>document.getElementById('app-loader').remove(),600);
     }
+    _hideLoader();
+    return;
   }
+
+  // ── FIREBASE AUTH STATE LISTENER ──
+  // This fires once on page load with the persisted auth state.
+  // We guard it with _loginInProgress so it does NOT interfere when
+  // the user manually calls doLogin().
+  let _authListenerFired = false;
+
+  _fbAuth.onAuthStateChanged(async (fbUser)=>{
+    // If doLogin() is running, skip — it handles everything itself
+    if(_loginInProgress) return;
+
+    // Only handle the *initial* auth restore on page load
+    // Subsequent calls (after manual login) are already handled by doLogin()
+    if(_authListenerFired) return;
+    _authListenerFired = true;
+
+    if(fbUser){
+      // Firebase has a persisted session — restore it
+      let udata = {};
+      try{
+        const snap = await _fbDb.ref('karenta/users/'+fbUser.uid).get();
+        udata = snap.val() || {};
+      } catch(e){
+        console.warn('[Karenta] Session restore DB read failed:', e.message);
+      }
+
+      _currentUser = {
+        uid  : fbUser.uid,
+        email: fbUser.email,
+        nama : udata.nama || fbUser.displayName || fbUser.email.split('@')[0],
+        role : udata.role || 'karyawan',
+      };
+      _cloudMode = true;
+      saveSession();
+      hideLoginScreen();
+      updateUserUI();
+      applyRoleRestrictions();
+      startCloudSync();
+      nav('dashboard');
+    } else {
+      // No Firebase session
+      clearSession();
+      showLoginScreen();
+    }
+
+    _hideLoader();
+  });
+
+  // Safety net: if onAuthStateChanged never fires within 10s, show login
+  setTimeout(()=>{
+    if(!_authListenerFired){
+      console.warn('[Karenta] Auth state listener timed out — showing login');
+      _authListenerFired = true;
+      showLoginScreen();
+      _hideLoader();
+    }
+  }, 10000);
 }
 
 document.addEventListener('DOMContentLoaded', appInit);
