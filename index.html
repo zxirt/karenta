@@ -2215,6 +2215,14 @@ function startSessionTimer(expiresAt){
       const notice = document.getElementById('li-session-notice');
       if(notice) notice.style.display = 'block';
       showLoginScreen();
+      return;
+    }
+    // PATCHED: mobile — jika Firebase sudah init tapi cloud belum aktif (mis. setelah background lama),
+    // coba reconnect tanpa paksa login ulang
+    if(_fbDb && !_cloudMode && _fbAuth){
+      _fbAuth.currentUser
+        ? ((_cloudMode = true), startCloudSync())
+        : void 0; // Firebase akan reconnect sendiri via onAuthStateChanged
     }
   });
 })();
@@ -2286,6 +2294,8 @@ function initFirebase(cfg){
     }
     _fbAuth = _fbApp.auth();
     _fbDb   = _fbApp.database();
+    // Set persistence ke LOCAL agar session bertahan di mobile browser & PWA
+    _fbAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(()=>{});
     return true;
   }catch(e){
     console.error('Firebase init error', e);
