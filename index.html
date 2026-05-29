@@ -3149,9 +3149,8 @@ function renderPengaturan(){
 
   // OWNER tab
   if(isOwner){
-    const c=getOwnerCreds();
     const el=document.getElementById('oc-cur-id');
-    if(el) el.textContent=c.id;
+    if(el) el.textContent=localStorage.getItem(OWNER_ID_KEY)||'-';
     // Update cloud status indicator in settings
     const cloudEl = document.getElementById('oc-cloud-status');
     if(cloudEl){
@@ -3793,14 +3792,6 @@ function tick(){
   document.getElementById('topbar-date').textContent=ds;
 }
 tick(); setInterval(tick,30000);
-  // PATCHED: Migrate old plaintext creds + show setup if no creds exist
-  _migrateOwnerCredentials().then(()=>{
-    // Small delay to let login screen render first
-    setTimeout(()=>{
-      if(!localStorage.getItem(OWNER_ID_KEY)||!localStorage.getItem(OWNER_HASH_KEY))
-        _showFirstTimeSetup();
-    }, 500);
-  });
 
 // ══════════════════════════════════════════════
 // TOAST
@@ -6227,18 +6218,54 @@ function renderExport(){
 // ══════════════════════════════════════════════
 // INIT — runs after all scripts are loaded
 // ══════════════════════════════════════════════
-function appInit(){
+async function appInit(){
+  // PATCHED: Migrate old plaintext creds sebelum checkAuth, agar hash tersedia
+  await _migrateOwnerCredentials();
+
   checkAuth();
+
   // seed() hanya dijalankan jika offline — jika cloud mode, tunggu data dari Firebase
   if(!_cloudMode) seed();
   renderDash();
+
+  // PATCHED: Tampilkan first-time setup HANYA jika belum ada kredensial Owner,
+  // dan hanya setelah login screen sudah ditampilkan (delay kecil untuk render).
+  // Guard: jangan tampilkan jika session sudah valid (user sudah login).
+  setTimeout(()=>{
+    if(!_currentUser &&
+       (!localStorage.getItem(OWNER_ID_KEY) || !localStorage.getItem(OWNER_HASH_KEY))){
+      _showFirstTimeSetup();
+    }
+  }, 600);
+}
+
+// PATCHED: Tunggu hingga Firebase SDK selesai dimuat sebelum init.
+// Di mobile browser lambat, CDN script kadang belum siap saat DOMContentLoaded.
+function _waitForFirebaseThenInit(){
+  if(typeof firebase !== 'undefined'){
+    appInit();
+  } else {
+    // Coba lagi setiap 100ms, maks 5 detik
+    let tries = 0;
+    const poll = setInterval(()=>{
+      tries++;
+      if(typeof firebase !== 'undefined'){
+        clearInterval(poll);
+        appInit();
+      } else if(tries > 50){
+        clearInterval(poll);
+        console.warn('[Init] Firebase SDK tidak tersedia, lanjut tanpa cloud.');
+        appInit(); // tetap lanjut — offline mode tetap berfungsi
+      }
+    }, 100);
+  }
 }
 
 // Pastikan semua script (termasuk Firebase CDN) selesai dimuat
 if(document.readyState === 'loading'){
-  document.addEventListener('DOMContentLoaded', appInit);
+  document.addEventListener('DOMContentLoaded', _waitForFirebaseThenInit);
 } else {
-  appInit();
+  _waitForFirebaseThenInit();
 }
 
 // ══════════════════════════════════════════════
