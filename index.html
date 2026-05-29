@@ -1950,15 +1950,38 @@ function makeIconB64(size){
 const icon192 = makeIconB64(192);
 const icon512 = makeIconB64(512);
 
-// Manifest: static ./manifest.json sudah di-set langsung di <link rel="manifest" href="./manifest.json">
-// Blob URL manifest sudah dihapus — tidak perlu JS untuk ini
-
 // Set favicon dan apple-touch-icon ke logo asli
 (function(){
   const ati = document.getElementById('ati-link');
   const fav = document.getElementById('favicon-link');
   if(ati) ati.href = LOGO_SRC;
   if(fav) fav.href = LOGO_SRC;
+})();
+
+// Inject blob manifest dengan icon data URI agar browser tidak fetch icon-192.png (file tidak ada)
+(function(){
+  try{
+    const manifestData = {
+      name: "Karenta Auto Serasi",
+      short_name: "Karenta",
+      description: "Sistem Manajemen Rental Mobil",
+      start_url: "./",
+      scope: "./",
+      display: "standalone",
+      orientation: "any",
+      background_color: "#0b0b14",
+      theme_color: "#f0a500",
+      categories: ["business", "productivity"],
+      icons: [
+        { src: icon192, sizes: "192x192", type: "image/jpeg", purpose: "any maskable" },
+        { src: icon512, sizes: "512x512", type: "image/jpeg", purpose: "any maskable" }
+      ]
+    };
+    const blob = new Blob([JSON.stringify(manifestData)], {type:'application/manifest+json'});
+    const blobURL = URL.createObjectURL(blob);
+    const manifestLink = document.getElementById('manifest-link');
+    if(manifestLink) manifestLink.href = blobURL;
+  } catch(e){ /* non-fatal */ }
 })();
 
 // ── Service Worker (improved caching) ──
