@@ -10,7 +10,7 @@ if('serviceWorker' in navigator){
   if(window.caches){
     caches.keys().then(function(names){
       names.forEach(function(name){
-        if(name.indexOf('karenta-v2')>=0 || name.indexOf('-v3')>=0 || name.indexOf('-v1')>=0){
+        if(name.indexOf('karenta-v2')>=0 || name.indexOf('-v3')>=0 || name.indexOf('-v1')>=0 || name.indexOf('-v4')>=0){
           caches.delete(name);
           console.log('[Cache] Cleared old cache:', name);
         }

@@ -5,11 +5,7 @@
       "data": {
         "$collection": {
           ".read": "auth != null",
-          ".write": "auth != null && (
-            root.child('karenta/users').child(auth.uid).child('role').val() === 'owner' ||
-            root.child('karenta/users').child(auth.uid).child('role').val() === 'admin' ||
-            root.child('karenta/users').child(auth.uid).child('role').val() === 'karyawan'
-          )",
+          ".write": "auth != null && ( root.child('karenta/users').child(auth.uid).child('role').val() === 'owner' || root.child('karenta/users').child(auth.uid).child('role').val() === 'admin' || root.child('karenta/users').child(auth.uid).child('role').val() === 'karyawan' )",
           ".validate": "newData.isString() || newData.hasChildren()"
         }
       },
@@ -18,10 +14,7 @@
         ".read": "auth != null",
         "$uid": {
           ".read": "auth != null && (auth.uid === $uid || root.child('karenta/users').child(auth.uid).child('role').val() === 'owner' || root.child('karenta/users').child(auth.uid).child('role').val() === 'admin')",
-          ".write": "auth != null && (
-            root.child('karenta/users').child(auth.uid).child('role').val() === 'owner' ||
-            root.child('karenta/users').child(auth.uid).child('role').val() === 'admin'
-          )",
+          ".write": "auth != null && ( root.child('karenta/users').child(auth.uid).child('role').val() === 'owner' || root.child('karenta/users').child(auth.uid).child('role').val() === 'admin' )",
           "role": {
             ".write": "auth != null && root.child('karenta/users').child(auth.uid).child('role').val() === 'owner'",
             ".validate": "newData.isString() && (newData.val() === 'owner' || newData.val() === 'admin' || newData.val() === 'karyawan')"
@@ -38,11 +31,7 @@
       "sync_meta": {
         "$key": {
           ".read": "auth != null",
-          ".write": "auth != null && (
-            $key === 'mobil' ||
-            $key === 'pelanggan' ||
-            $key === 'booking'
-          )",
+          ".write": "auth != null && ( $key === 'mobil' || $key === 'pelanggan' || $key === 'booking' )",
           ".validate": "newData.hasChildren(['at', 'by']) && newData.child('at').isNumber() && newData.child('by').isString() && newData.child('by').val().length < 100"
         }
       },

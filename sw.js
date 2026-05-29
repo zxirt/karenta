@@ -7,7 +7,7 @@
 const CACHE_VERSION = 'v5';
 const CACHE_STATIC  = `karenta-static-${CACHE_VERSION}`;
 // Also nuke old cache names explicitly — ADD current version here before bumping CACHE_VERSION
-const OLD_CACHES = ['karenta-v2','karenta-static-v3','karenta-fonts-v3','karenta-static-v4','karenta-fonts-v4','karenta-static-v5','karenta-fonts-v5'];
+const OLD_CACHES = ['karenta-v2','karenta-static-v3','karenta-fonts-v3','karenta-static-v4','karenta-fonts-v4'];
 const CACHE_FONTS   = `karenta-fonts-${CACHE_VERSION}`;
 
 // Maksimum ukuran cache (bytes) — 50MB
