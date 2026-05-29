@@ -20,7 +20,7 @@ if('serviceWorker' in navigator){
 }
 </script>
 <!-- CSP: single-line, browser-compatible, covers all Firebase/CDN/PWA needs -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self' blob: data:; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://*.gstatic.com https://*.googleapis.com https://*.firebaseapp.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://*.gstatic.com; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' blob: https://*.firebaseio.com https://*.firebasedatabase.app wss://*.firebasedatabase.app https://*.googleapis.com https://*.gstatic.com https://*.firebaseapp.com https://fonts.googleapis.com; img-src 'self' data: blob: https://*.gstatic.com; worker-src 'self' blob:; manifest-src 'self' blob:; frame-src 'self' https://*.firebaseapp.com;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' blob: data:; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://*.gstatic.com https://*.googleapis.com https://*.firebaseapp.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://*.gstatic.com; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' blob: https://*.firebaseio.com wss://*.firebaseio.com https://*.firebasedatabase.app wss://*.firebasedatabase.app https://*.googleapis.com https://*.gstatic.com https://*.firebaseapp.com https://fonts.googleapis.com; img-src 'self' data: blob: https://*.gstatic.com; worker-src 'self' blob:; manifest-src 'self' blob:; frame-src 'self' https://*.firebaseapp.com;">
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -2190,8 +2190,8 @@ function startSessionTimer(expiresAt){
   _sessionTimer = setTimeout(()=>{
     clearSession(false);
     _currentUser = null; _cloudMode = false;
-    Object.keys(_listeners).forEach(k=>_fbDb?.ref('karenta/data/'+k).off('value',_listeners[k]));
-    _listeners = {};
+    // PATCHED: pakai stopCloudSync() untuk cleanup listener yang benar (_connRef_cb & _data_cb)
+    stopCloudSync();
     setSyncIndicator(false);
     document.getElementById('sb-user').style.display = 'none';
     const notice = document.getElementById('li-session-notice');
@@ -2249,8 +2249,17 @@ const DB={
     try{return JSON.parse(localStorage.getItem('kas_'+k)||'[]');}catch{return[];}
   },
   set(k,v){
-    localStorage.setItem('kas_'+k,JSON.stringify(v));
-    // PATCHED: debounced write - prevents write spam, saves Firebase costs
+    // PATCHED: QuotaExceededError handling — cegah silent crash
+    try{
+      localStorage.setItem('kas_'+k,JSON.stringify(v));
+    }catch(e){
+      if(e.name==='QuotaExceededError'||e.code===22){
+        toast('⚠️ KRITIS: Penyimpanan lokal penuh! Data mungkin tidak tersimpan. Hapus foto mobil lama atau backup data.','err');
+        console.error('[DB] localStorage quota exceeded for key:', k);
+      }
+      // Tetap coba sync ke Firebase walaupun localStorage gagal
+    }
+    // PATCHED: debounced write with hash dedup - prevents write spam, saves Firebase costs
     if(typeof _fbWrite==='function') _fbWrite(k,v);
   },
   save(k,item){const a=this.get(k),i=a.findIndex(x=>x.id===item.id);if(i>=0)a[i]=item;else a.push(item);this.set(k,a)},
@@ -2366,29 +2375,9 @@ const _localWriteTs = {};
 const _refreshTimers = {};
 let _connectedRef = null;
 
-// Override DB.set to also write to Firebase + track local writes
-DB.set = function(k, v){
-  // PATCHED: QuotaExceededError handling — cegah silent crash
-  try{
-    localStorage.setItem('kas_'+k, JSON.stringify(v));
-  }catch(e){
-    if(e.name==='QuotaExceededError'||e.code===22){
-      toast('⚠️ KRITIS: Penyimpanan lokal penuh! Data mungkin tidak tersimpan. Hapus foto mobil lama atau backup data.','err');
-      console.error('[DB] localStorage quota exceeded for key:', k);
-    }
-    // Re-throw agar caller tahu, tapi jangan crash Firebase sync di bawah
-    // Tetap coba sync ke Firebase walaupun localStorage gagal
-  }
-  _localWriteTs[k] = Date.now();
-  if(_cloudMode && _fbDb){
-    _fbDb.ref('karenta/data/'+k).set(v).catch(()=>{});
-    _fbDb.ref('karenta/sync_meta/'+k).set({
-      at    : Date.now(),
-      by    : DEVICE_ID,
-      byName: _currentUser?.nama || 'Pengguna'
-    }).catch(()=>{});
-  }
-};
+// PATCHED: DB.set override dihapus — semua write Firebase sudah dihandle oleh
+// _fbWrite (debounced + hash dedup) yang dipanggil dari DB.set asli di atas.
+// _localWriteTs diupdate di dalam _fbWrite setelah write berhasil.
 
 // ── OWNER FIREBASE CONNECTION ──
 // Fungsi terpusat untuk connect Owner ke Firebase dengan await yang benar
@@ -2589,7 +2578,10 @@ function startCloudSync(){
     const isOnline = snap.val() === true;
     if(isOnline){
       setSyncStatus('live');
+      // PATCHED: cek _cloudMode sebelum upload — callback bisa fired setelah logout
+      if(!_cloudMode || !_fbDb) return;
       _fbDb.ref('karenta/data').get().then(dataSnap=>{
+        if(!_cloudMode || !_fbDb) return; // re-check setelah async
         const fbHasData = dataSnap.exists() && dataSnap.val() !== null;
         if(!fbHasData){
           ['mobil','pelanggan','booking'].forEach(k=>{
@@ -3280,8 +3272,26 @@ async function saveOwnerPassword(){
 
 // ── FIREBASE INLINE SAVE (pakai hardcoded config) ──
 function saveFirebaseConfigInline(){
-  syncNow();
-  toast('Menggunakan konfigurasi Firebase bawaan aplikasi ☁️');
+  // PATCHED: FIREBASE_CONFIG_HARDCODED selalu null di versi ini.
+  // Fungsi sebelumnya memanggil syncNow() tanpa menyimpan config — ini no-op.
+  // Sekarang tampilkan pesan yang benar agar user tahu harus input config manual.
+  if(!FIREBASE_CONFIG_HARDCODED){
+    toast('Tidak ada konfigurasi bawaan. Masukkan Firebase config secara manual di form di atas.','err');
+    return;
+  }
+  // Jika suatu saat FIREBASE_CONFIG_HARDCODED diisi, simpan dan init Firebase
+  try{
+    localStorage.setItem(FB_CFG_KEY, JSON.stringify(FIREBASE_CONFIG_HARDCODED));
+  }catch(e){
+    toast('Gagal menyimpan konfigurasi: '+e.message,'err');
+    return;
+  }
+  if(initFirebase(FIREBASE_CONFIG_HARDCODED)){
+    syncNow();
+    toast('Menggunakan konfigurasi Firebase bawaan aplikasi ☁️');
+  } else {
+    toast('Konfigurasi bawaan tidak valid.','err');
+  }
 }
 
 // ── PASTE JSON ──
@@ -3309,16 +3319,11 @@ function parseFbJSON(){
 function disconnectFirebase(){
   customConfirm('Putuskan koneksi Firebase? Aplikasi beralih ke mode offline.',()=>{
     localStorage.removeItem(FB_CFG_KEY);
-    // Stop all listeners
-    if(_connectedRef && _fbDb) _fbDb.ref('.info/connected').off('value',_connectedRef);
-    _connectedRef = null;
-    Object.keys(_listeners).forEach(k=>{
-      if(_listeners[k]&&_fbDb) _fbDb.ref('karenta/data/'+k).off('value',_listeners[k]);
-      _listeners[k]=null;
-    });
-    _listeners={};
+    // PATCHED: pakai stopCloudSync() untuk cleanup listener yang benar (_connRef_cb & _data_cb)
+    _cloudMode = false;
+    stopCloudSync();
     if(_fbApp) try{_fbApp.delete();}catch{}
-    _fbApp=null;_fbAuth=null;_fbDb=null;_cloudMode=false;
+    _fbApp=null;_fbAuth=null;_fbDb=null;
     setSyncIndicator(false);
     renderFirebasePanel();
     toast('Firebase diputuskan. Mode offline aktif.');
