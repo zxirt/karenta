@@ -37,6 +37,7 @@
     https://fcmregistrations.googleapis.com
     https://fonts.googleapis.com
     https://fonts.gstatic.com
+    https://www.gstatic.com
     https://cdnjs.cloudflare.com;
   worker-src 'self' blob:;
   manifest-src 'self';
@@ -1364,7 +1365,12 @@ async function hashPw(pw){
 // ═══════════════════════════════════════
 // FIREBASE INIT & CLOUD SYNC
 // ═══════════════════════════════════════
-function initFirebase(){
+
+// initFirebase is now ASYNC so we can AWAIT setPersistence before
+// registering onAuthStateChanged. This is the fix for Bug A+B+E:
+// setPersistence mutates IndexedDB and causes a spurious null auth
+// state event if onAuthStateChanged is registered before it resolves.
+async function initFirebase(){
   if(typeof firebase === 'undefined'){
     console.warn('[Karenta] Firebase SDK not loaded — offline mode only');
     return false;
@@ -1374,14 +1380,19 @@ function initFirebase(){
     try{ _fbApp = firebase.app('karenta'); }
     catch{ _fbApp = firebase.initializeApp(FIREBASE_CONFIG, 'karenta'); }
 
-    // Auth with LOCAL persistence so session survives page refresh
     _fbAuth = _fbApp.auth();
-    _fbAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(()=>{
-      console.warn('[Karenta] Could not set auth persistence');
-    });
+    _fbDb   = _fbApp.database();
 
-    // Realtime Database
-    _fbDb = _fbApp.database();
+    // CRITICAL: AWAIT setPersistence BEFORE registering onAuthStateChanged.
+    // Without await, setPersistence rewrites IndexedDB asynchronously while
+    // onAuthStateChanged is already listening — causing a spurious null event
+    // that consumes the _authListenerFired guard and blocks real session restore.
+    try{
+      await _fbAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+      console.debug('[Karenta] Auth persistence set to LOCAL');
+    } catch(e){
+      console.warn('[Karenta] setPersistence failed (non-critical):', e.message);
+    }
 
     return true;
   } catch(e){
@@ -1508,7 +1519,8 @@ function hideLoginScreen(){
   document.getElementById('app-layout').style.display='flex';
 }
 
-// Flag to prevent onAuthStateChanged from handling a login in progress
+// _loginInProgress: prevents onAuthStateChanged from double-handling
+// while doLogin() is actively running an async sign-in.
 let _loginInProgress = false;
 
 async function doLogin(){
@@ -1517,78 +1529,108 @@ async function doLogin(){
   const errEl = document.getElementById('login-err');
   const btn   = document.getElementById('l-btn');
 
-  errEl.style.display='none';
-  if(!email||!pass){
-    errEl.textContent='Email dan password wajib diisi';
-    errEl.style.display='block';
+  errEl.style.display = 'none';
+  errEl.textContent   = '';
+
+  if(!email || !pass){
+    errEl.textContent = 'Email dan password wajib diisi.';
+    errEl.style.display = 'block';
     return;
   }
 
-  btn.textContent='Masuk…'; btn.disabled=true;
+  // Lock UI
+  btn.textContent = 'Masuk…';
+  btn.disabled    = true;
   _loginInProgress = true;
+  console.debug('[Login] Step 1: Starting login for', email);
 
-  // Timeout guard — if Firebase hangs > 15s, unblock the button
+  // Hard timeout — guarantees button is always re-enabled even if Firebase hangs
   const loginTimeout = setTimeout(()=>{
-    if(_loginInProgress){
-      _loginInProgress = false;
-      btn.textContent='Masuk'; btn.disabled=false;
-      errEl.textContent='Login timeout. Periksa koneksi internet Anda.';
-      errEl.style.display='block';
+    if(!_loginInProgress) return;
+    console.warn('[Login] TIMEOUT after 20s — resetting UI');
+    _loginInProgress    = false;
+    btn.textContent     = 'Masuk';
+    btn.disabled        = false;
+    errEl.textContent   = 'Login timeout (>20s). Periksa koneksi internet dan coba lagi.';
+    errEl.style.display = 'block';
+  }, 20000);
+
+  // Helper: always call this before any return/throw to reset state
+  function _loginDone(success = false){
+    clearTimeout(loginTimeout);
+    _loginInProgress = false;
+    if(!success){
+      btn.textContent = 'Masuk';
+      btn.disabled    = false;
     }
-  }, 15000);
+  }
 
   try{
-    // Check Firebase is ready
+
+    // ── STEP 1: Firebase available? ──
     if(!_fbAuth || !_fbDb){
-      clearTimeout(loginTimeout);
-      _loginInProgress = false;
+      console.warn('[Login] Firebase not ready — trying local owner login');
+      _loginDone(false);
       await tryOwnerLocalLogin(email, pass);
-      btn.textContent='Masuk'; btn.disabled=false;
       return;
     }
 
-    // Step 1: Firebase Auth sign-in
+    // ── STEP 2: signInWithEmailAndPassword ──
+    console.debug('[Login] Step 2: Calling signInWithEmailAndPassword…');
     let fbUser;
     try{
       const cred = await _fbAuth.signInWithEmailAndPassword(email, pass);
       fbUser = cred.user;
+      console.debug('[Login] Step 2 OK: UID =', fbUser.uid);
     } catch(authErr){
-      clearTimeout(loginTimeout);
-      _loginInProgress = false;
-      btn.textContent='Masuk'; btn.disabled=false;
+      console.error('[Login] Step 2 FAILED:', authErr.code, authErr.message);
+      _loginDone(false);
 
-      // Network error → try local owner login
-      if(authErr.code==='auth/network-request-failed'){
+      if(authErr.code === 'auth/network-request-failed'){
+        console.warn('[Login] Network error — trying local owner login');
         await tryOwnerLocalLogin(email, pass);
         return;
       }
+
       const msgs = {
-        'auth/user-not-found'    :'Akun tidak ditemukan.',
-        'auth/wrong-password'    :'Password salah.',
-        'auth/invalid-email'     :'Format email tidak valid.',
-        'auth/invalid-credential':'Email atau password salah.',
-        'auth/too-many-requests' :'Terlalu banyak percobaan. Tunggu sebentar.',
-        'auth/user-disabled'     :'Akun dinonaktifkan oleh admin.',
+        'auth/user-not-found'      : 'Akun tidak ditemukan. Periksa email Anda.',
+        'auth/wrong-password'      : 'Password salah.',
+        'auth/invalid-email'       : 'Format email tidak valid.',
+        'auth/invalid-credential'  : 'Email atau password salah.',
+        'auth/too-many-requests'   : 'Terlalu banyak percobaan gagal. Tunggu beberapa menit.',
+        'auth/user-disabled'       : 'Akun dinonaktifkan oleh admin.',
+        // FIX Bug-C: unauthorized-domain is the #1 cause of hang on GitHub Pages
+        'auth/unauthorized-domain' :
+          '❌ Domain ini belum diizinkan di Firebase.\n' +
+          'Tambahkan "' + location.hostname + '" ke:\n' +
+          'Firebase Console → Authentication → Settings → Authorized domains.',
+        'auth/operation-not-allowed': 'Login email/password belum diaktifkan di Firebase Console.',
       };
-      errEl.textContent = msgs[authErr.code] || 'Login gagal: '+authErr.message;
-      errEl.style.display='block';
+      errEl.textContent   = msgs[authErr.code] || ('Login gagal: ' + (authErr.message || authErr.code));
+      errEl.style.display = 'block';
       return;
     }
 
-    // Step 2: Fetch user role from Realtime DB (with timeout)
+    // ── STEP 3: Read user role from Realtime Database ──
+    console.debug('[Login] Step 3: Reading user role from DB path karenta/users/', fbUser.uid);
     let udata = {};
     try{
-      const dbPromise = _fbDb.ref('karenta/users/'+fbUser.uid).get();
-      const timeoutPromise = new Promise((_,reject)=>setTimeout(()=>reject(new Error('db-timeout')),8000));
-      const snap = await Promise.race([dbPromise, timeoutPromise]);
+      // Race the DB read against an 8-second timeout so we never hang here
+      const dbPromise = _fbDb.ref('karenta/users/' + fbUser.uid).get();
+      const toPromise = new Promise((_, rej) =>
+        setTimeout(() => rej(new Error('db-timeout')), 8000)
+      );
+      const snap = await Promise.race([dbPromise, toPromise]);
       udata = snap.val() || {};
+      console.debug('[Login] Step 3 OK: role =', udata.role || '(not set, default: karyawan)');
     } catch(dbErr){
-      // DB read failed or timed out — still log in with default role
-      console.warn('[Karenta] DB role lookup failed, using default role:', dbErr.message);
+      // DB timeout or permission denied — non-fatal, use default role
+      console.warn('[Login] Step 3: DB role read failed (' + dbErr.message + ') — using default role "karyawan"');
       udata = {};
     }
 
-    // Step 3: Build user object and proceed
+    // ── STEP 4: Build user, redirect to dashboard ──
+    console.debug('[Login] Step 4: Building user object and navigating to dashboard');
     _currentUser = {
       uid  : fbUser.uid,
       email: fbUser.email,
@@ -1596,24 +1638,28 @@ async function doLogin(){
       role : udata.role || 'karyawan',
     };
     _cloudMode = true;
-    clearTimeout(loginTimeout);
-    _loginInProgress = false;
+
+    _loginDone(true); // Clear timeout, reset _loginInProgress — but keep btn disabled (we're redirecting)
 
     saveSession();
     hideLoginScreen();
     updateUserUI();
     applyRoleRestrictions();
     startCloudSync();
-    toast('Selamat datang, '+_currentUser.nama+'! 👋');
+    toast('Selamat datang, ' + _currentUser.nama + '! 👋');
     nav('dashboard');
 
+    // Re-enable button now (in case user navigates back to login — shouldn't happen but safe)
+    btn.textContent = 'Masuk';
+    btn.disabled    = false;
+    console.debug('[Login] Step 4 DONE: Dashboard shown');
+
   } catch(e){
-    clearTimeout(loginTimeout);
-    _loginInProgress = false;
-    btn.textContent='Masuk'; btn.disabled=false;
-    errEl.textContent = 'Terjadi kesalahan: '+(e.message||'coba lagi');
-    errEl.style.display='block';
-    console.error('[Karenta] doLogin error:', e);
+    // Outer catch — should never reach here due to inner catches, but just in case
+    console.error('[Login] Unexpected error in doLogin:', e);
+    _loginDone(false);
+    errEl.textContent   = 'Terjadi kesalahan tidak terduga: ' + (e.message || 'coba lagi');
+    errEl.style.display = 'block';
   }
 }
 
@@ -3082,36 +3128,33 @@ function _hideLoader(){
   const loader = document.getElementById('app-loader');
   if(!loader) return;
   loader.classList.add('hidden');
-  setTimeout(()=>{ if(loader.parentNode) loader.remove(); }, 600);
+  setTimeout(()=>{ if(loader && loader.parentNode) loader.remove(); }, 600);
 }
 
 async function appInit(){
   applyTheme();
-  updateClock(); setInterval(updateClock, 1000);
+  updateClock();
+  setInterval(updateClock, 1000);
 
   // Keyboard shortcuts for login form
-  const lPass = document.getElementById('l-pass');
+  const lPass  = document.getElementById('l-pass');
   const lEmail = document.getElementById('l-email');
-  if(lPass) lPass.addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); });
-  if(lEmail) lEmail.addEventListener('keydown', e=>{ if(e.key==='Enter') lPass?.focus(); });
+  if(lPass)  lPass.addEventListener('keydown',  e => { if(e.key === 'Enter') doLogin(); });
+  if(lEmail) lEmail.addEventListener('keydown', e => { if(e.key === 'Enter') lPass?.focus(); });
 
-  // Export preview listeners
+  // Export date range change handlers
   const expFrom = document.getElementById('exp-from');
   const expTo   = document.getElementById('exp-to');
   if(expFrom) expFrom.addEventListener('change', updateExportPreview);
-  if(expTo)   expTo.addEventListener('change', updateExportPreview);
+  if(expTo)   expTo.addEventListener('change',   updateExportPreview);
 
   // Seed demo data on first run
   seedData();
 
-  // Init Firebase SDK
-  const fbReady = initFirebase();
-
-  // ── RESTORE SESSION ──
+  // ── OFFLINE OWNER SESSION: restore immediately without Firebase ──
   const sess = loadSession();
-
   if(sess && sess.uid === 'local-owner'){
-    // Offline owner session — restore immediately, no Firebase needed
+    console.debug('[Init] Restoring local-owner session');
     _currentUser = sess;
     _cloudMode   = false;
     hideLoginScreen();
@@ -3122,10 +3165,18 @@ async function appInit(){
     return;
   }
 
+  // ── INIT FIREBASE (async — awaits setPersistence before continuing) ──
+  // This is the critical fix: by awaiting initFirebase(), we ensure that
+  // setPersistence() has fully resolved before onAuthStateChanged is registered.
+  // Without this, setPersistence triggers a spurious null auth event that
+  // consumes the guard flag and causes the real user session to be ignored.
+  console.debug('[Init] Initializing Firebase…');
+  const fbReady = await initFirebase();
+  console.debug('[Init] Firebase ready:', fbReady);
+
   if(!fbReady || !_fbAuth){
-    // Firebase SDK failed to load (e.g. network blocked CDN)
+    console.warn('[Init] Firebase unavailable — falling back to local session or login');
     if(sess){
-      // Restore last session with whatever data we have locally
       _currentUser = sess;
       _cloudMode   = false;
       hideLoginScreen();
@@ -3140,28 +3191,73 @@ async function appInit(){
   }
 
   // ── FIREBASE AUTH STATE LISTENER ──
-  // This fires once on page load with the persisted auth state.
-  // We guard it with _loginInProgress so it does NOT interfere when
-  // the user manually calls doLogin().
-  let _authListenerFired = false;
+  // State machine approach — replaces the brittle single-shot _authListenerFired flag.
+  //
+  // State transitions:
+  //   'waiting'   → initial, onAuthStateChanged not yet fired
+  //   'resolved'  → first meaningful auth event processed (user or null)
+  //
+  // Key rules:
+  //   • If _loginInProgress is true, skip — doLogin() owns the auth flow
+  //   • Once 'resolved', ignore further events UNLESS _loginInProgress just cleared
+  //     (meaning doLogin just signed in — but doLogin handles its own redirect so we still skip)
+  //   • On null auth with no session: show login screen
+  //   • On valid fbUser: restore session and go to dashboard
+  //
+  let _authState = 'waiting'; // 'waiting' | 'resolved'
 
-  _fbAuth.onAuthStateChanged(async (fbUser)=>{
-    // If doLogin() is running, skip — it handles everything itself
-    if(_loginInProgress) return;
+  // Safety net: if Firebase never calls onAuthStateChanged within 12s
+  // (e.g. SDK loaded but IndexedDB locked), show login screen anyway
+  const authSafetyTimer = setTimeout(()=>{
+    if(_authState === 'waiting'){
+      console.warn('[Init] onAuthStateChanged never fired after 12s — showing login');
+      _authState = 'resolved';
+      showLoginScreen();
+      _hideLoader();
+    }
+  }, 12000);
 
-    // Only handle the *initial* auth restore on page load
-    // Subsequent calls (after manual login) are already handled by doLogin()
-    if(_authListenerFired) return;
-    _authListenerFired = true;
+  _fbAuth.onAuthStateChanged(async (fbUser) => {
+    console.debug('[Auth] onAuthStateChanged fired. state=' + _authState + ' loginInProgress=' + _loginInProgress + ' fbUser=' + (fbUser ? fbUser.uid : 'null'));
+
+    // doLogin() is actively handling a manual sign-in — hands off
+    if(_loginInProgress){
+      console.debug('[Auth] Skipped — doLogin() is in progress');
+      return;
+    }
+
+    // If we've already resolved the initial auth state AND doLogin is not running,
+    // this is a subsequent Firebase event (e.g. token refresh, sign-out from another tab).
+    // Handle sign-out events but ignore re-auth noise.
+    if(_authState === 'resolved'){
+      if(!fbUser){
+        // User signed out in another tab or token expired
+        console.warn('[Auth] User signed out externally — returning to login');
+        _currentUser = null;
+        _cloudMode   = false;
+        clearSession();
+        stopCloudSync();
+        showLoginScreen();
+      }
+      // If fbUser is still valid, do nothing — already on dashboard
+      return;
+    }
+
+    // ── First meaningful auth event ──
+    clearTimeout(authSafetyTimer);
+    _authState = 'resolved';
 
     if(fbUser){
-      // Firebase has a persisted session — restore it
+      console.debug('[Auth] Restoring session for UID:', fbUser.uid);
+
+      // Read role from DB (non-fatal if fails)
       let udata = {};
       try{
-        const snap = await _fbDb.ref('karenta/users/'+fbUser.uid).get();
+        const snap = await _fbDb.ref('karenta/users/' + fbUser.uid).get();
         udata = snap.val() || {};
+        console.debug('[Auth] DB role:', udata.role || '(not set)');
       } catch(e){
-        console.warn('[Karenta] Session restore DB read failed:', e.message);
+        console.warn('[Auth] DB role read failed:', e.message);
       }
 
       _currentUser = {
@@ -3177,24 +3273,16 @@ async function appInit(){
       applyRoleRestrictions();
       startCloudSync();
       nav('dashboard');
+      console.debug('[Auth] Session restored — dashboard shown');
     } else {
       // No Firebase session
+      console.debug('[Auth] No session — showing login screen');
       clearSession();
       showLoginScreen();
     }
 
     _hideLoader();
   });
-
-  // Safety net: if onAuthStateChanged never fires within 10s, show login
-  setTimeout(()=>{
-    if(!_authListenerFired){
-      console.warn('[Karenta] Auth state listener timed out — showing login');
-      _authListenerFired = true;
-      showLoginScreen();
-      _hideLoader();
-    }
-  }, 10000);
 }
 
 document.addEventListener('DOMContentLoaded', appInit);
