@@ -2409,9 +2409,13 @@ function _clearCloudEmail(){
 }
 
 async function _connectOwnerToFirebase(){
+  // Coba init Firebase jika belum (mis. di mobile yang baru pertama kali)
+  if(!_fbAuth) initFirebase(getFbConfig());
   if(!_fbAuth){
+    // Tidak ada config sama sekali — tampilkan modal cloud agar owner bisa setup
     _cloudMode = false;
     setSyncIndicator(false);
+    _showOwnerCloudModal();
     return;
   }
   try{
