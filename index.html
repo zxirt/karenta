@@ -2170,7 +2170,7 @@ function loadSession(){
     if(!s) return null;
     if(Date.now() > s.expiresAt){
       clearSession(false); // expired
-      return null;
+      return 'expired';
     }
     return s;
   }catch{ return null; }
@@ -2434,6 +2434,9 @@ function _showOwnerCloudModal(autoClose=false){
     const skipBtn = document.getElementById('oc-skip-btn');
     if(skipBtn) skipBtn.style.display='block';
   }
+  // Tampilkan section config jika perangkat ini belum memiliki Firebase config (mis. mobile baru)
+  const cfgSection = document.getElementById('oc-cfg-section');
+  if(cfgSection) cfgSection.style.display = getFbConfig() ? 'none' : 'block';
 }
 
 async function doOwnerCloudLogin(){
@@ -2452,6 +2455,31 @@ async function doOwnerCloudLogin(){
   if(errEl){ errEl.style.display='none'; errEl.textContent=''; }
 
   try{
+    // Jika belum ada config (mis. di mobile/perangkat baru), coba baca dari textarea input
+    if(!getFbConfig()){
+      const cfgRaw = (document.getElementById('oc-cfg-input')?.value||'').trim();
+      if(!cfgRaw){
+        if(errEl){ errEl.style.display='block'; errEl.textContent='Perangkat ini belum memiliki Firebase config. Paste firebaseConfig terlebih dahulu.'; }
+        if(btn){ btn.textContent='Hubungkan ke Cloud'; btn.disabled=false; }
+        return;
+      }
+      let parsedCfg;
+      try{
+        // Support paste dengan atau tanpa kurung kurawal terluar / format JS object
+        const cleaned = cfgRaw.replace(/^\s*firebaseConfig\s*=\s*/,'').replace(/;?\s*$/,'');
+        parsedCfg = JSON.parse(cleaned);
+      }catch{
+        if(errEl){ errEl.style.display='block'; errEl.textContent='Format firebaseConfig tidak valid. Pastikan format JSON yang benar.'; }
+        if(btn){ btn.textContent='Hubungkan ke Cloud'; btn.disabled=false; }
+        return;
+      }
+      if(!parsedCfg.apiKey || !parsedCfg.databaseURL){
+        if(errEl){ errEl.style.display='block'; errEl.textContent='Config tidak lengkap. Pastikan apiKey dan databaseURL ada.'; }
+        if(btn){ btn.textContent='Hubungkan ke Cloud'; btn.disabled=false; }
+        return;
+      }
+      localStorage.setItem(FB_CFG_KEY, JSON.stringify(parsedCfg));
+    }
     if(!_fbAuth) initFirebase(getFbConfig());
     await _fbAuth.signInWithEmailAndPassword(email, pass);
 
@@ -5595,6 +5623,14 @@ ${perMob.length>0?`
         Mode cloud memungkinkan data sinkron antar perangkat secara realtime.
         Gunakan <strong>email &amp; password Firebase</strong> akun Owner yang sudah dibuat di Firebase Console.
         Password lokal Owner berbeda dari password Firebase.
+      </div>
+      <!-- Bagian config Firebase — hanya muncul jika belum ada config tersimpan (mis. di perangkat baru/mobile) -->
+      <div id="oc-cfg-section" style="display:none;margin-bottom:18px;padding:14px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:10px">
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Firebase Config (Perangkat Baru)</div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:10px;line-height:1.5">
+          Perangkat ini belum memiliki konfigurasi Firebase. Paste isi <code style="background:var(--surface);padding:1px 4px;border-radius:3px">firebaseConfig</code> dari PC Owner atau Firebase Console.
+        </div>
+        <textarea id="oc-cfg-input" class="fi" rows="5" placeholder='{"apiKey":"...","authDomain":"...","databaseURL":"...","projectId":"...","appId":"..."}' style="font-family:monospace;font-size:11px;resize:vertical;width:100%;box-sizing:border-box"></textarea>
       </div>
       <div style="margin-bottom:14px">
         <label style="display:block;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Email Firebase</label>
