@@ -6627,33 +6627,21 @@ if(document.readyState === 'loading'){
 
   window.dpPick=function(ds){
     if(dpMode==='selesai'){
-      // mode selesai: langsung set end, jaga konsistensi
+      // mode selesai: langsung set end, tutup
       if(dpStart&&ds<dpStart){
-        // pilih tanggal sebelum mulai → geser mulai
         dpStart=ds; dpEnd=null;
       } else {
         dpEnd=ds;
       }
       dpApply();
-      if(dpEnd) dpClose();
-      else dpRender();
+      dpClose();
       return;
     }
 
-    // mode mulai: first click = start, second click (>start) = end, lalu tutup
-    if(!dpStart||dpEnd||(ds<dpStart)){
-      dpStart=ds; dpEnd=null; dpHover=null;
-      dpRender();
-    } else if(ds===dpStart){
-      // klik hari yang sama → anggap 1 hari
-      dpEnd=ds;
-      dpApply();
-      dpClose();
-    } else {
-      dpEnd=ds;
-      dpApply();
-      dpClose();
-    }
+    // mode mulai: langsung set start, tutup
+    dpStart=ds; dpEnd=null; dpHover=null;
+    dpApply();
+    dpClose();
   };
 
   window.dpHoverDay=function(ds){
@@ -6712,6 +6700,24 @@ if(document.readyState === 'loading'){
         Lalu tambahkan UID ke database: <code style="background:var(--surface2);padding:2px 5px;border-radius:4px">karenta/users/{uid}</code>
         dengan field <code style="background:var(--surface2);padding:2px 5px;border-radius:4px">role: "owner"</code>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ DATE PICKER POPUP ══ -->
+<div class="dp-overlay" id="dp-overlay" onclick="dpOverlayClick(event)">
+  <div class="dp-popup" id="dp-popup">
+    <div class="dp-hdr">
+      <button class="dp-nav" onclick="dpNav(-1)">&#8249;</button>
+      <div class="dp-my" id="dp-my"></div>
+      <button class="dp-nav" onclick="dpNav(1)">&#8250;</button>
+    </div>
+    <div class="dp-grid" id="dp-dh"></div>
+    <div class="dp-grid" id="dp-grid"></div>
+    <div class="dp-footer">
+      <div class="dp-range-lbl" id="dp-range-lbl">Pilih tanggal mulai</div>
+      <button class="btn btn-s btn-sm" onclick="dpClear()" style="font-size:11px;padding:4px 10px">Reset</button>
+      <button class="btn btn-p btn-sm" onclick="dpDone()" id="dp-done-btn" style="font-size:11px;padding:4px 10px" disabled>Pilih</button>
     </div>
   </div>
 </div>
