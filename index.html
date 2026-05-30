@@ -1750,23 +1750,14 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
           <select class="fs" id="bkg-mob"><option value="">-- Pilih Mobil --</option></select>
         </div>
       </div>
-      <!-- hidden date inputs (still used by JS logic) -->
-      <input type="hidden" id="bkg-mulai">
-      <input type="hidden" id="bkg-selesai">
       <div class="frow">
         <div class="fg">
           <label class="fl">Tanggal Mulai *</label>
-          <button type="button" class="fi" id="bkg-mulai-btn" onclick="dpOpen('mulai')"
-            style="text-align:left;cursor:pointer;display:flex;align-items:center;gap:8px;color:var(--text3)">
-            <span style="font-size:15px">📅</span><span id="bkg-mulai-lbl">Pilih tanggal mulai</span>
-          </button>
+          <input type="date" class="fi" id="bkg-mulai" oninput="try{calcBkg();}catch(e){}">
         </div>
         <div class="fg">
           <label class="fl">Tanggal Selesai <span style="color:var(--text3);font-weight:400">(opsional)</span></label>
-          <button type="button" class="fi" id="bkg-selesai-btn" onclick="dpOpen('selesai')"
-            style="text-align:left;cursor:pointer;display:flex;align-items:center;gap:8px;color:var(--text3)">
-            <span style="font-size:15px">🏁</span><span id="bkg-selesai-lbl">Pilih tanggal selesai</span>
-          </button>
+          <input type="date" class="fi" id="bkg-selesai" oninput="try{calcBkg();}catch(e){}">
         </div>
       </div>
       <div class="frow">
@@ -2731,23 +2722,21 @@ function startCloudSync(){
   ['mobil','pelanggan','booking'].forEach(k=>{
     _data_cb[k] = snap=>{
       const val = snap.val();
-      if(val === null || val === undefined){
-        if(!DB.get(k).length && k === 'mobil') seed();
-        return;
-      }
-      const arr = Array.isArray(val) ? val.filter(x=>x!=null) : Object.values(val).filter(x=>x!=null);
       // Jangan re-render jika ini adalah echo dari write kita sendiri (800ms window)
       const isRecentOwnWrite = _localWriteTs[k] && (Date.now() - _localWriteTs[k] < 800);
       if(isRecentOwnWrite) return;
-      // Update localStorage DAN hash cache SETELAH lolos isRecentOwnWrite
-      // agar DB.get(k) di device ini mencerminkan data terbaru dari Firebase
+      // val null artinya semua data koleksi ini dihapus di Firebase
+      const arr = (val === null || val === undefined)
+        ? []
+        : (Array.isArray(val) ? val.filter(x=>x!=null) : Object.values(val).filter(x=>x!=null));
+      // Update localStorage agar device ini mencerminkan data terbaru (termasuk penghapusan)
       try { localStorage.setItem('kas_'+k, JSON.stringify(arr)); } catch(e2) {
         console.error('[Sync] localStorage write failed:', k, e2);
       }
-      // Update hash cache agar write berikutnya tidak salah dedup
       _hashArr(arr).then(h => { _writeHash[k] = h; }).catch(()=>{});
       clearTimeout(_renderTimers[k]);
       _renderTimers[k] = setTimeout(()=>{
+        if(k === 'mobil' && !arr.length) seed();
         const sec = document.querySelector('.sec.active')?.id?.replace('sec-','');
         if(sec)({dashboard:renderDash,booking:renderBooking,mobil:renderMobil,
                   pelanggan:renderPel,laporan:renderLap,kalender:renderKal})[sec]?.();
@@ -4711,10 +4700,7 @@ function openAddBkg(){
   const tomorrowStr = tomorrow.toISOString().split('T')[0];
   document.getElementById('bkg-mulai').value = todayStr;
   document.getElementById('bkg-selesai').value = '';
-  document.getElementById('bkg-mulai-lbl').textContent = dpFmt ? dpFmt(todayStr) : todayStr;
-  document.getElementById('bkg-mulai-lbl').style.color = 'var(--text)';
-  document.getElementById('bkg-selesai-lbl').textContent = 'Pilih tanggal selesai';
-  document.getElementById('bkg-selesai-lbl').style.color = 'var(--text3)';
+
   // Jam default
   document.getElementById('bkg-jam-mulai').value = '08:00';
   document.getElementById('bkg-jam-selesai').value = '08:00';
@@ -4737,12 +4723,7 @@ function openEditBkg(id){
   popBkgSelects(b.mobId,b.pelId);
   document.getElementById('bkg-mulai').value=b.mulai;
   document.getElementById('bkg-selesai').value=b.selesai;
-  if(typeof dpFmt==='function'){
-    const mulaiLbl=document.getElementById('bkg-mulai-lbl');
-    const selesaiLbl=document.getElementById('bkg-selesai-lbl');
-    if(mulaiLbl){ mulaiLbl.textContent=b.mulai?dpFmt(b.mulai):'Pilih tanggal mulai'; mulaiLbl.style.color=b.mulai?'var(--text)':'var(--text3)'; }
-    if(selesaiLbl){ selesaiLbl.textContent=b.selesai?dpFmt(b.selesai):'Pilih tanggal selesai'; selesaiLbl.style.color=b.selesai?'var(--text)':'var(--text3)'; }
-  }
+
   document.getElementById('bkg-jam-mulai').value=b.jamMulai||'08:00';
   document.getElementById('bkg-jam-selesai').value=b.jamSelesai||'08:00';
   document.getElementById('bkg-hph').value=b.hph;
@@ -6538,11 +6519,7 @@ if(document.readyState === 'loading'){
     // update hidden inputs
     document.getElementById('bkg-mulai').value=dpStart||'';
     document.getElementById('bkg-selesai').value=dpEnd||'';
-    // update button labels
-    document.getElementById('bkg-mulai-lbl').textContent=dpStart?dpFmt(dpStart):'Pilih tanggal mulai';
-    document.getElementById('bkg-mulai-lbl').style.color=dpStart?'var(--text)':'var(--text3)';
-    document.getElementById('bkg-selesai-lbl').textContent=dpEnd?dpFmt(dpEnd):'Pilih tanggal selesai';
-    document.getElementById('bkg-selesai-lbl').style.color=dpEnd?'var(--text)':'var(--text3)';
+
     // trigger calcBkg
     try{ calcBkg(); }catch(e){}
   }
@@ -6607,12 +6584,8 @@ if(document.readyState === 'loading'){
     }
     var inMulai=document.getElementById('bkg-mulai');
     var inSelesai=document.getElementById('bkg-selesai');
-    var lblMulai=document.getElementById('bkg-mulai-lbl');
-    var lblSelesai=document.getElementById('bkg-selesai-lbl');
     if(inMulai) inMulai.value=dpStart||'';
     if(inSelesai) inSelesai.value=dpEnd||'';
-    if(lblMulai){ lblMulai.textContent=dpStart?dpFmt(dpStart):'Pilih tanggal mulai'; lblMulai.style.color=dpStart?'var(--text)':'var(--text3)'; }
-    if(lblSelesai){ lblSelesai.textContent=dpEnd?dpFmt(dpEnd):'Pilih tanggal selesai'; lblSelesai.style.color=dpEnd?'var(--text)':'var(--text3)'; }
     try{ calcBkg(); }catch(e){}
     var ov=document.getElementById('dp-overlay');
     if(ov) ov.classList.remove('open');
