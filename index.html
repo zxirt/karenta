@@ -1958,8 +1958,14 @@ function _applyIcons(){
     const c = document.createElement('canvas');
     c.width = c.height = size;
     const ctx = c.getContext('2d');
-    ctx.drawImage(_logoImg, 0, 0, size, size);
-    return c.toDataURL('image/jpeg', 0.9);
+    // Fill background
+    ctx.fillStyle = '#f0a500';
+    ctx.fillRect(0, 0, size, size);
+    // Draw logo with padding (12% each side) so it's never clipped
+    const pad = Math.round(size * 0.12);
+    const imgSize = size - pad * 2;
+    ctx.drawImage(_logoImg, pad, pad, imgSize, imgSize);
+    return c.toDataURL('image/png');
   }
 
   const icon192 = makeIconB64(192);
