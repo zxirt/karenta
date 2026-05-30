@@ -2646,8 +2646,8 @@ const _fbWriteLock = {}; // race condition guard per key
 // PATCHED: Debounced Firebase write with hash deduplication (prevents duplicate writes & saves costs)
 async function _fbWrite(k, arr){
   if(!_fbDb || !_cloudMode) return;
-  const hash = await _hashArr(arr);
-  if(_writeHash[k] === hash) return; // data tidak berubah — skip write
+  // Tandai ada perubahan pending — jangan skip berdasarkan hash di sini
+  // karena hash lama mungkin berasal dari data sebelum hapus
   clearTimeout(_writeTimers2[k]);
   _writeTimers2[k] = setTimeout(async()=>{
     if(!_fbDb || !_cloudMode) return;
@@ -2655,13 +2655,15 @@ async function _fbWrite(k, arr){
     if(_fbWriteLock[k]) return;
     _fbWriteLock[k] = true;
     try{
-      // Re-check hash setelah debounce — mungkin sudah berubah lagi
-      const currentHash = await _hashArr(DB.get(k));
-      if(_writeHash[k] === currentHash) { _fbWriteLock[k]=false; return; }
+      // Selalu ambil data TERBARU dari DB saat write terjadi
+      const latest = DB.get(k);
+      const currentHash = await _hashArr(latest);
+      // Skip hanya jika hash sama DAN sudah pernah dikirim sebelumnya
+      if(_writeHash[k] && _writeHash[k] === currentHash) { _fbWriteLock[k]=false; return; }
       const now = Date.now();
       // ATOMIC: tulis data + sync_meta bersamaan via update() untuk konsistensi
       const updatePayload = {};
-      updatePayload['karenta/data/'+k] = arr;
+      updatePayload['karenta/data/'+k] = latest;
       updatePayload['karenta/sync_meta/'+k] = {
         at: now,
         by: DEVICE_ID,
@@ -2669,7 +2671,7 @@ async function _fbWrite(k, arr){
       };
       await _fbDb.ref('/').update(updatePayload);
       _localWriteTs[k] = now;
-      _writeHash[k]    = hash;
+      _writeHash[k]    = currentHash;
     } catch(e){
       console.error('[Sync] Write failed:', k, e?.code||e?.message);
       // Jika permission denied, jangan retry spam
