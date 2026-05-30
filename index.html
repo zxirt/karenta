@@ -238,8 +238,8 @@ tbody td{padding:11px 16px;color:var(--text);vertical-align:middle}
 
 
 /* ── DATE PICKER POPUP ── */
-.dp-overlay{position:fixed;inset:0;z-index:300;display:none}
-.dp-overlay.open{display:block}
+.dp-overlay{position:fixed;inset:0;z-index:400;display:none;pointer-events:none}
+.dp-overlay.open{display:block;pointer-events:auto}
 .dp-popup{
   position:absolute;background:var(--surface);border:1px solid var(--border2);
   border-radius:var(--r);box-shadow:0 20px 60px rgba(0,0,0,.6);
