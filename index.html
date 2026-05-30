@@ -2637,13 +2637,15 @@ const _fbWriteLock = {}; // race condition guard per key
 // PATCHED: Debounced Firebase write with hash deduplication (prevents duplicate writes & saves costs)
 async function _fbWrite(k, arr){
   if(!_fbDb || !_cloudMode) return;
-  // Tandai ada perubahan pending — jangan skip berdasarkan hash di sini
-  // karena hash lama mungkin berasal dari data sebelum hapus
+  // Debounce: batalkan timer pending, ganti dengan yang baru
   clearTimeout(_writeTimers2[k]);
   _writeTimers2[k] = setTimeout(async()=>{
     if(!_fbDb || !_cloudMode) return;
-    // Race condition guard — cegah dua write bersamaan untuk key yang sama
-    if(_fbWriteLock[k]) return;
+    // Jika write sebelumnya masih berjalan, tunggu sebentar lalu retry sekali
+    if(_fbWriteLock[k]){
+      _writeTimers2[k] = setTimeout(()=>_fbWrite(k, DB.get(k)), 300);
+      return;
+    }
     _fbWriteLock[k] = true;
     try{
       // Selalu ambil data TERBARU dari DB saat write terjadi, bersihkan null
@@ -2654,7 +2656,7 @@ async function _fbWrite(k, arr){
       const now = Date.now();
       // ATOMIC: tulis data + sync_meta bersamaan via update() untuk konsistensi
       const updatePayload = {};
-      updatePayload['karenta/data/'+k] = latest;
+      updatePayload['karenta/data/'+k] = latest.length ? latest : null;
       updatePayload['karenta/sync_meta/'+k] = {
         at: now,
         by: DEVICE_ID,
@@ -2667,7 +2669,6 @@ async function _fbWrite(k, arr){
       setTimeout(()=>{ if(_localWriteTs[k]===now) _localWriteTs[k]=0; }, 800);
     } catch(e){
       console.error('[Sync] Write failed:', k, e?.code||e?.message);
-      // Jika permission denied, jangan retry spam
       if(e?.code === 'PERMISSION_DENIED') setSyncStatus('offline');
     } finally {
       _fbWriteLock[k] = false;
