@@ -5817,11 +5817,6 @@ ${perMob.length>0?`
     </div>
     <div class="dp-grid" id="dp-dh"></div>
     <div class="dp-grid" id="dp-grid"></div>
-    <div class="dp-footer">
-      <div class="dp-range-lbl" id="dp-range-lbl">Pilih tanggal mulai</div>
-      <button class="btn btn-s btn-sm" onclick="dpClear()" style="font-size:11px;padding:4px 10px">Reset</button>
-      <button class="btn btn-p btn-sm" onclick="dpDone()" id="dp-done-btn" style="font-size:11px;padding:4px 10px" disabled>Pilih</button>
-    </div>
   </div>
 </div>
 
@@ -6460,16 +6455,19 @@ if(document.readyState === 'loading'){
     // Baca nilai saat ini dari hidden inputs
     const curMulai=document.getElementById('bkg-mulai').value;
     const curSelesai=document.getElementById('bkg-selesai').value;
+    // mode mulai: reset dpEnd agar langsung bisa pilih tanpa reset manual
     dpStart=curMulai||null;
-    dpEnd=curSelesai||null;
+    dpEnd=mode==='mulai' ? null : (curSelesai||null);
 
     // Kalau buka "selesai" dan sudah ada tanggal mulai, mulai dari bulan tanggal mulai
+    // Hindari UTC shift: parse manual agar sesuai timezone lokal
+    function parseDateLocal(s){const [y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d);}
     let pivotDate=now;
     if(mode==='selesai'&&dpStart){
-      pivotDate=new Date(dpStart);
+      pivotDate=parseDateLocal(dpStart);
       dpMinDate=dpStart;
     } else if(mode==='mulai'&&dpStart){
-      pivotDate=new Date(dpStart);
+      pivotDate=parseDateLocal(dpStart);
       dpMinDate=null;
     } else {
       dpMinDate=null;
@@ -6480,10 +6478,10 @@ if(document.readyState === 'loading'){
 
     // posisikan popup di bawah tombol yang diklik
     const btn=document.getElementById('bkg-'+mode+'-btn');
-    const rect=btn.getBoundingClientRect();
     const popup=document.getElementById('dp-popup');
     const overlay=document.getElementById('dp-overlay');
-    if(!popup || !overlay) return;
+    if(!btn||!popup||!overlay) return;
+    const rect=btn.getBoundingClientRect();
     overlay.classList.add('open');
 
     dpRender();
@@ -6561,7 +6559,7 @@ if(document.readyState === 'loading'){
     const fd=new Date(dpY,dpM,1).getDay();
     const dim=new Date(dpY,dpM+1,0).getDate();
     const dipm=new Date(dpY,dpM,0).getDate();
-    const todayStr=new Date().toISOString().split('T')[0];
+    const _tn=new Date();const todayStr=`${_tn.getFullYear()}-${String(_tn.getMonth()+1).padStart(2,'0')}-${String(_tn.getDate()).padStart(2,'0')}`;
     let cells=[];
 
     // prev month padding
@@ -6597,51 +6595,28 @@ if(document.readyState === 'loading'){
       return`<div class="${cls}" data-ds="${ds}" onclick="dpPick('${ds}')" onmouseenter="dpHoverDay('${ds}')">${c.d}</div>`;
     }).join('');
 
-    // Footer label
-    const lbl=document.getElementById('dp-range-lbl');
-    const doneBtn=document.getElementById('dp-done-btn');
-    if(dpMode==='mulai'){
-      if(!dpStart){
-        lbl.innerHTML='Pilih <strong>tanggal mulai</strong>';
-        doneBtn.disabled=true;
-      } else if(!dpEnd){
-        lbl.innerHTML=`Mulai: <strong>${dpFmt(dpStart)}</strong> → pilih selesai`;
-        doneBtn.disabled=false;
-      } else {
-        lbl.innerHTML=`<strong>${dpFmt(dpStart)}</strong> → <strong>${dpFmt(dpEnd)}</strong>`;
-        doneBtn.disabled=false;
-      }
-    } else {
-      if(!dpStart){
-        lbl.innerHTML='Pilih tanggal mulai dulu';
-        doneBtn.disabled=true;
-      } else if(!dpEnd){
-        lbl.innerHTML=`Mulai: <strong>${dpFmt(dpStart)}</strong> → pilih selesai`;
-        doneBtn.disabled=false;
-      } else {
-        lbl.innerHTML=`<strong>${dpFmt(dpStart)}</strong> → <strong>${dpFmt(dpEnd)}</strong>`;
-        doneBtn.disabled=false;
-      }
-    }
   }
 
   window.dpPick=function(ds){
-    if(dpMode==='selesai'){
-      // mode selesai: langsung set end, tutup
-      if(dpStart&&ds<dpStart){
-        dpStart=ds; dpEnd=null;
-      } else {
-        dpEnd=ds;
-      }
-      dpApply();
-      dpClose();
-      return;
+    if(!ds||!dpMode) return;
+    if(dpMode==='mulai'){
+      dpStart=ds; dpEnd=null; dpHover=null;
+    } else {
+      if(dpStart&&ds<dpStart){ dpStart=ds; dpEnd=null; }
+      else { dpEnd=ds; }
     }
-
-    // mode mulai: langsung set start, tutup
-    dpStart=ds; dpEnd=null; dpHover=null;
-    dpApply();
-    dpClose();
+    var inMulai=document.getElementById('bkg-mulai');
+    var inSelesai=document.getElementById('bkg-selesai');
+    var lblMulai=document.getElementById('bkg-mulai-lbl');
+    var lblSelesai=document.getElementById('bkg-selesai-lbl');
+    if(inMulai) inMulai.value=dpStart||'';
+    if(inSelesai) inSelesai.value=dpEnd||'';
+    if(lblMulai){ lblMulai.textContent=dpStart?dpFmt(dpStart):'Pilih tanggal mulai'; lblMulai.style.color=dpStart?'var(--text)':'var(--text3)'; }
+    if(lblSelesai){ lblSelesai.textContent=dpEnd?dpFmt(dpEnd):'Pilih tanggal selesai'; lblSelesai.style.color=dpEnd?'var(--text)':'var(--text3)'; }
+    try{ calcBkg(); }catch(e){}
+    var ov=document.getElementById('dp-overlay');
+    if(ov) ov.classList.remove('open');
+    dpMode=null; dpHover=null;
   };
 
   window.dpHoverDay=function(ds){
@@ -6714,11 +6689,6 @@ if(document.readyState === 'loading'){
     </div>
     <div class="dp-grid" id="dp-dh"></div>
     <div class="dp-grid" id="dp-grid"></div>
-    <div class="dp-footer">
-      <div class="dp-range-lbl" id="dp-range-lbl">Pilih tanggal mulai</div>
-      <button class="btn btn-s btn-sm" onclick="dpClear()" style="font-size:11px;padding:4px 10px">Reset</button>
-      <button class="btn btn-p btn-sm" onclick="dpDone()" id="dp-done-btn" style="font-size:11px;padding:4px 10px" disabled>Pilih</button>
-    </div>
   </div>
 </div>
 
