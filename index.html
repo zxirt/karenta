@@ -2655,8 +2655,8 @@ async function _fbWrite(k, arr){
     if(_fbWriteLock[k]) return;
     _fbWriteLock[k] = true;
     try{
-      // Selalu ambil data TERBARU dari DB saat write terjadi
-      const latest = DB.get(k);
+      // Selalu ambil data TERBARU dari DB saat write terjadi, bersihkan null
+      const latest = DB.get(k).filter(x=>x!=null);
       const currentHash = await _hashArr(latest);
       // Skip hanya jika hash sama DAN sudah pernah dikirim sebelumnya
       if(_writeHash[k] && _writeHash[k] === currentHash) { _fbWriteLock[k]=false; return; }
@@ -2672,6 +2672,8 @@ async function _fbWrite(k, arr){
       await _fbDb.ref('/').update(updatePayload);
       _localWriteTs[k] = now;
       _writeHash[k]    = currentHash;
+      // Reset timestamp setelah 800ms agar echo listener tidak di-skip lebih lama dari perlu
+      setTimeout(()=>{ if(_localWriteTs[k]===now) _localWriteTs[k]=0; }, 800);
     } catch(e){
       console.error('[Sync] Write failed:', k, e?.code||e?.message);
       // Jika permission denied, jangan retry spam
@@ -2733,9 +2735,9 @@ function startCloudSync(){
         if(!DB.get(k).length && k === 'mobil') seed();
         return;
       }
-      const arr = Array.isArray(val) ? val : Object.values(val).filter(Boolean);
-      // Jangan re-render jika ini adalah echo dari write kita sendiri (2s window)
-      const isRecentOwnWrite = _localWriteTs[k] && (Date.now() - _localWriteTs[k] < 2000);
+      const arr = Array.isArray(val) ? val.filter(x=>x!=null) : Object.values(val).filter(x=>x!=null);
+      // Jangan re-render jika ini adalah echo dari write kita sendiri (800ms window)
+      const isRecentOwnWrite = _localWriteTs[k] && (Date.now() - _localWriteTs[k] < 800);
       if(isRecentOwnWrite) return;
       // Update localStorage DAN hash cache SETELAH lolos isRecentOwnWrite
       // agar DB.get(k) di device ini mencerminkan data terbaru dari Firebase
