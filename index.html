@@ -5781,58 +5781,6 @@ ${perMob.length>0?`
   </div>
 </div>
 
-
-
-<!-- ── OWNER CLOUD LOGIN MODAL ── -->
-<div class="mdrop" id="md-owner-cloud">
-  <div class="modal" style="max-width:420px">
-    <div class="mhdr">
-      <span class="mtitle">Hubungkan ke Firebase Cloud</span>
-      <button class="mclose" onclick="doOwnerCloudSkip()">&#x2715;</button>
-    </div>
-    <div style="padding:20px 22px">
-      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:18px;font-size:12.5px;color:var(--text2);line-height:1.6">
-        <div style="font-weight:600;color:var(--text);margin-bottom:6px">&#128274; Kenapa perlu login Firebase?</div>
-        Mode cloud memungkinkan data sinkron antar perangkat secara realtime.
-        Gunakan <strong>email &amp; password Firebase</strong> akun Owner yang sudah dibuat di Firebase Console.
-        Password lokal Owner berbeda dari password Firebase.
-      </div>
-      <!-- Bagian config Firebase — hanya muncul jika belum ada config tersimpan (mis. di perangkat baru/mobile) -->
-      <div id="oc-cfg-section" style="display:none;margin-bottom:18px;padding:14px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:10px">
-        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Firebase Config (Perangkat Baru)</div>
-        <div style="font-size:12px;color:var(--text2);margin-bottom:10px;line-height:1.5">
-          Perangkat ini belum memiliki konfigurasi Firebase. Paste isi <code style="background:var(--surface);padding:1px 4px;border-radius:3px">firebaseConfig</code> dari PC Owner atau Firebase Console.
-        </div>
-        <textarea id="oc-cfg-input" class="fi" rows="5" placeholder='{"apiKey":"...","authDomain":"...","databaseURL":"...","projectId":"...","appId":"..."}' style="font-family:monospace;font-size:11px;resize:vertical;width:100%;box-sizing:border-box"></textarea>
-      </div>
-      <div style="margin-bottom:14px">
-        <label style="display:block;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Email Firebase</label>
-        <input id="oc-email" class="fi" type="email" placeholder="contoh@gmail.com" autocomplete="email">
-      </div>
-      <div style="margin-bottom:16px">
-        <label style="display:block;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Password Firebase</label>
-        <div style="position:relative">
-          <input id="oc-cloud-pass" class="fi" type="password" placeholder="Password Firebase kamu" autocomplete="current-password" style="padding-right:44px">
-          <button onclick="togglePwVis('oc-cloud-pass',this)" type="button"
-            style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;padding:4px">&#128065;</button>
-        </div>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:18px">
-        <input type="checkbox" id="oc-remember" checked style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer">
-        <label for="oc-remember" style="font-size:13px;color:var(--text2);cursor:pointer">Simpan email untuk login berikutnya</label>
-      </div>
-      <div id="oc-cloud-err" style="display:none;font-size:12px;color:var(--red);margin-bottom:14px;padding:10px 12px;background:rgba(220,50,50,.1);border-radius:8px;line-height:1.5"></div>
-      <button id="oc-login-btn" class="btn btn-p" style="width:100%;margin-bottom:10px" onclick="doOwnerCloudLogin()">Hubungkan ke Cloud</button>
-      <button id="oc-skip-btn" class="btn" style="width:100%;color:var(--text3)" onclick="doOwnerCloudSkip()">Lewati &mdash; Gunakan Mode Lokal</button>
-      <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border);font-size:12px;color:var(--text3);line-height:1.6">
-        <strong style="color:var(--text2)">Belum punya akun Firebase Owner?</strong><br>
-        Buka Firebase Console &rarr; Authentication &rarr; Users &rarr; Add User.<br>
-        Lalu tambahkan UID ke database: <code style="background:var(--surface2);padding:2px 5px;border-radius:4px">karenta/users/{uid}</code>
-        dengan field <code style="background:var(--surface2);padding:2px 5px;border-radius:4px">role: "owner"</code>
-      </div>
-    </div>
-  </div>
-</div>
 </body>
 </html>`;
 
@@ -6680,5 +6628,56 @@ if(document.readyState === 'loading'){
 })();
 
 </script>
+
+<!-- ── OWNER CLOUD LOGIN MODAL ── -->
+<div class="mdrop" id="md-owner-cloud">
+  <div class="modal" style="max-width:420px">
+    <div class="mhdr">
+      <span class="mtitle">Hubungkan ke Firebase Cloud</span>
+      <button class="mclose" onclick="doOwnerCloudSkip()">&#x2715;</button>
+    </div>
+    <div style="padding:20px 22px">
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:18px;font-size:12.5px;color:var(--text2);line-height:1.6">
+        <div style="font-weight:600;color:var(--text);margin-bottom:6px">&#128274; Kenapa perlu login Firebase?</div>
+        Mode cloud memungkinkan data sinkron antar perangkat secara realtime.
+        Gunakan <strong>email &amp; password Firebase</strong> akun Owner yang sudah dibuat di Firebase Console.
+        Password lokal Owner berbeda dari password Firebase.
+      </div>
+      <div id="oc-cfg-section" style="display:none;margin-bottom:18px;padding:14px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:10px">
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Firebase Config (Perangkat Baru)</div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:10px;line-height:1.5">
+          Perangkat ini belum memiliki konfigurasi Firebase. Paste isi <code style="background:var(--surface);padding:1px 4px;border-radius:3px">firebaseConfig</code> dari PC Owner atau Firebase Console.
+        </div>
+        <textarea id="oc-cfg-input" class="fi" rows="5" placeholder='{"apiKey":"...","authDomain":"...","databaseURL":"...","projectId":"...","appId":"..."}' style="font-family:monospace;font-size:11px;resize:vertical;width:100%;box-sizing:border-box"></textarea>
+      </div>
+      <div style="margin-bottom:14px">
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Email Firebase</label>
+        <input id="oc-email" class="fi" type="email" placeholder="contoh@gmail.com" autocomplete="email">
+      </div>
+      <div style="margin-bottom:16px">
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Password Firebase</label>
+        <div style="position:relative">
+          <input id="oc-cloud-pass" class="fi" type="password" placeholder="Password Firebase kamu" autocomplete="current-password" style="padding-right:44px">
+          <button onclick="togglePwVis('oc-cloud-pass',this)" type="button"
+            style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;padding:4px">&#128065;</button>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:18px">
+        <input type="checkbox" id="oc-remember" checked style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer">
+        <label for="oc-remember" style="font-size:13px;color:var(--text2);cursor:pointer">Simpan email untuk login berikutnya</label>
+      </div>
+      <div id="oc-cloud-err" style="display:none;font-size:12px;color:var(--red);margin-bottom:14px;padding:10px 12px;background:rgba(220,50,50,.1);border-radius:8px;line-height:1.5"></div>
+      <button id="oc-login-btn" class="btn btn-p" style="width:100%;margin-bottom:10px" onclick="doOwnerCloudLogin()">Hubungkan ke Cloud</button>
+      <button id="oc-skip-btn" class="btn" style="width:100%;color:var(--text3)" onclick="doOwnerCloudSkip()">Lewati &mdash; Gunakan Mode Lokal</button>
+      <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border);font-size:12px;color:var(--text3);line-height:1.6">
+        <strong style="color:var(--text2)">Belum punya akun Firebase Owner?</strong><br>
+        Buka Firebase Console &rarr; Authentication &rarr; Users &rarr; Add User.<br>
+        Lalu tambahkan UID ke database: <code style="background:var(--surface2);padding:2px 5px;border-radius:4px">karenta/users/{uid}</code>
+        dengan field <code style="background:var(--surface2);padding:2px 5px;border-radius:4px">role: "owner"</code>
+      </div>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
