@@ -2439,26 +2439,33 @@ async function _connectOwnerToFirebase(){
   if(!_fbAuth) initFirebase(getFbConfig());
   if(!_fbAuth){
     // Tidak ada config sama sekali — tampilkan modal cloud agar owner bisa setup
-    _cloudMode = false; // KRITIS: jangan set true jika tidak ada Firebase
+    _cloudMode = false;
     setSyncIndicator(false);
     _showOwnerCloudModal();
     return;
   }
   try{
-    const fbUser = _fbAuth.currentUser;
-    if(fbUser && fbUser.email){
-      // Already signed in to Firebase — aktifkan cloud
-      _cloudMode = true;
-      startCloudSync();
-      return;
-    }
-    // Tidak ada Firebase session aktif — tampilkan login modal
-    _cloudMode = false; // KRITIS: jangan set true sebelum auth berhasil
-    setSyncIndicator(false);
-    _showOwnerCloudModal();
+    // Tunggu Firebase restore session (onAuthStateChanged) sebelum memutuskan tampilkan modal
+    await new Promise(resolve => {
+      const unsub = _fbAuth.onAuthStateChanged(user => {
+        unsub();
+        resolve(user);
+      });
+    }).then(fbUser => {
+      if(fbUser && fbUser.email){
+        // Session masih aktif — langsung aktifkan cloud tanpa modal
+        _cloudMode = true;
+        startCloudSync();
+      } else {
+        // Tidak ada session — tampilkan modal login Firebase
+        _cloudMode = false;
+        setSyncIndicator(false);
+        _showOwnerCloudModal();
+      }
+    });
   } catch(e){
     console.error('[Auth] Owner Firebase connect error:', e);
-    _cloudMode = false; // KRITIS: auth error = cloud mode HARUS false
+    _cloudMode = false;
     setSyncIndicator(false);
   }
 }
