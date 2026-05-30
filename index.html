@@ -3088,8 +3088,7 @@ async function doLogin(){
       const hasOwnerCreds = localStorage.getItem(OWNER_ID_KEY) && localStorage.getItem(OWNER_HASH_KEY);
       if(!hasOwnerCreds){
         // First time — belum ada credential owner tersimpan, tampilkan setup
-        showLoginErr('Belum ada akun Owner. Silakan setup di bawah ini.');
-        setTimeout(() => _showFirstTimeSetup(), 300);
+        showLoginErr('Belum ada akun Owner. Silakan hubungi administrator.');
       } else {
         showLoginErr('Username atau password salah.');
       }
@@ -6392,15 +6391,7 @@ async function appInit(){
 
   checkAuth();
 
-  // PATCHED: Tampilkan first-time setup HANYA jika belum ada kredensial Owner,
-  // dan hanya setelah login screen sudah ditampilkan (delay kecil untuk render).
-  // Guard: jangan tampilkan jika session sudah valid (user sudah login).
-  setTimeout(()=>{
-    if(!_currentUser &&
-       (!localStorage.getItem(OWNER_ID_KEY) || !localStorage.getItem(OWNER_HASH_KEY))){
-      _showFirstTimeSetup();
-    }
-  }, 600);
+
 }
 
 // PATCHED: Tunggu hingga Firebase SDK selesai dimuat sebelum init.
