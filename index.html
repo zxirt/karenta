@@ -2734,13 +2734,14 @@ function startCloudSync(){
         return;
       }
       const arr = Array.isArray(val) ? val : Object.values(val).filter(Boolean);
-      // Update localStorage dari Firebase
-      try { localStorage.setItem('kas_'+k, JSON.stringify(arr)); } catch(e2) {
-        console.error('[Sync] localStorage write failed:', k, e2);
-      }
       // Jangan re-render jika ini adalah echo dari write kita sendiri (2s window)
       const isRecentOwnWrite = _localWriteTs[k] && (Date.now() - _localWriteTs[k] < 2000);
       if(isRecentOwnWrite) return;
+      // Update localStorage DAN hash cache SETELAH lolos isRecentOwnWrite
+      // agar DB.get(k) di device ini mencerminkan data terbaru dari Firebase
+      try { localStorage.setItem('kas_'+k, JSON.stringify(arr)); } catch(e2) {
+        console.error('[Sync] localStorage write failed:', k, e2);
+      }
       // Update hash cache agar write berikutnya tidak salah dedup
       _hashArr(arr).then(h => { _writeHash[k] = h; }).catch(()=>{});
       clearTimeout(_renderTimers[k]);
@@ -6480,6 +6481,7 @@ if(document.readyState === 'loading'){
     const rect=btn.getBoundingClientRect();
     const popup=document.getElementById('dp-popup');
     const overlay=document.getElementById('dp-overlay');
+    if(!popup || !overlay) return;
     overlay.classList.add('open');
 
     dpRender();
