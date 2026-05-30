@@ -3032,7 +3032,7 @@ async function doLogin(){
     // ── 1. Cek Owner lokal ──
     if(await isOwnerLogin(input, pass)){  // PATCHED: async (uses hash)
       _recordLoginAttempt(true); // reset counter on success
-      _currentUser = { uid:'owner', email:'owner@karenta.local', nama:'Owner', role:'owner' };
+      _currentUser = { uid:'owner', email:input, nama:'Owner', role:'owner' };
       if(rememberMe) saveSession(_currentUser);
       else clearSession(false);
       hideLoginScreen();
