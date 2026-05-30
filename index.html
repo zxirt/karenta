@@ -2310,15 +2310,23 @@ const FB_CFG_KEY='karenta_fb_config';
 // SECURITY: Kredensial Firebase TIDAK di-hardcode di sini.
 // Owner harus memasukkan firebaseConfig via menu Pengaturan → Cloud Sync.
 // Config disimpan di localStorage hanya di perangkat Owner.
-const FIREBASE_CONFIG_HARDCODED = null;
+const FIREBASE_CONFIG_HARDCODED = {
+  apiKey: "AIzaSyBpOx-EiyOZnzusEiNoBx-6Qv7fFp9kdpQ",
+  authDomain: "karenta-13ce9.firebaseapp.com",
+  databaseURL: "https://karenta-13ce9-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "karenta-13ce9",
+  storageBucket: "karenta-13ce9.firebasestorage.app",
+  messagingSenderId: "803361158684",
+  appId: "1:803361158684:web:0aa7b0d8e8d9c79a4611d9"
+};
 
 function getFbConfig(){
-  // Config only comes from localStorage (set manually via Settings UI)
+  // Coba dari localStorage dulu, fallback ke hardcoded
   const stored = localStorage.getItem(FB_CFG_KEY);
   if (stored) {
     try { return JSON.parse(stored); } catch { /* fall through */ }
   }
-  return null;
+  return FIREBASE_CONFIG_HARDCODED;
 }
 
 function initFirebase(cfg){
