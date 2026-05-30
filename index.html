@@ -1958,9 +1958,7 @@ function _applyIcons(){
     const c = document.createElement('canvas');
     c.width = c.height = size;
     const ctx = c.getContext('2d');
-    // Fill background
-    ctx.fillStyle = '#f0a500';
-    ctx.fillRect(0, 0, size, size);
+    // Transparent background
     // Draw logo with padding (12% each side) so it's never clipped
     const pad = Math.round(size * 0.20);
     const imgSize = size - pad * 2;
